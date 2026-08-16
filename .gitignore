@@ -1,0 +1,35 @@
+# Secrets and local environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Editors, agents, and operating-system files
+.DS_Store
+.idea/
+.vscode/
+.claude/
+.codex/
+.agents/
+
+# Generated experiments
+/results/
+/logs/
+*.pid
+*.lock
+checkpoint.json
