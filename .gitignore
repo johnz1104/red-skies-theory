@@ -26,10 +26,3 @@ dist/
 .claude/
 .codex/
 .agents/
-
-# Generated experiments
-/results/
-/logs/
-*.pid
-*.lock
-checkpoint.json
