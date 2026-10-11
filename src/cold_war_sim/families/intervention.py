@@ -50,6 +50,8 @@ from .common import (
 
 NAME = "intervention"
 OUTCOMES = ("reformed", "crushed", "defected", "quagmire", "clash")
+# Commitment of each action: own forces 1, local forces or covert aid 1/3, otherwise 0.
+COMMITMENT = {"intervene": 1.0, "confront": 1.0, "crackdown": 1 / 3, "covert_aid": 1 / 3}
 PATRON_ACTIONS = ("accommodate", "crackdown", "intervene")
 RIVAL_ACTIONS = ("abstain", "condemn", "covert_aid", "confront")
 
@@ -249,7 +251,12 @@ class InterventionState(LoggedState):
             tags.append(f"strength:{self.strength}")
         if self.backed_down:
             tags.append("patron:backed_down")
-        return Outcome(self.label, tuple(tags), {})
+        p = self.params
+        metrics = {
+            f"commit:{p.patron}": COMMITMENT.get(self.patron_action or "", 0.0),
+            f"commit:{p.rival}": COMMITMENT.get(self.rival_action or "", 0.0),
+        }
+        return Outcome(self.label, tuple(tags), metrics)
 
     def observation(self, role: str) -> tuple[float, ...]:
         is_patron = role == self.params.patron

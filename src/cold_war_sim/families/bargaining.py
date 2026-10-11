@@ -12,6 +12,9 @@ Optional extensions:
   a position (A: a minimum share; B: a maximum A share). Agreeing beyond one's
   own commitment costs an audience cost, which makes the commitment credible.
 * **consent roles**: third parties that ratify or veto an agreement.
+* **explicit values**: a side may value an agreement as ``base + per_share * own
+  share`` instead of its share of a common ``surplus``, value a vetoed deal
+  apart from an impasse, and consent roles may value breakdown and impasse.
 
 Outcome labels: ``agreement`` (metric ``share``), ``breakdown``, ``impasse``,
 ``vetoed``. The game has perfect information, and :func:`solve` computes its
@@ -62,6 +65,8 @@ class SideParams(ImmutableParams):
     impasse_value: float
     commitment: float | None  # A: minimum share; B: maximum A share
     commitment_cost: float
+    agreement: tuple[float, float] | None  # (base, per_share); None: share of the surplus
+    vetoed_value: float | None  # None: the impasse value
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +75,8 @@ class ConsentParams(ImmutableParams):
     base: float
     per_share: float
     veto_value: float
+    breakdown_value: float
+    impasse_value: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +264,11 @@ class BargainingState(LoggedState):
         if label == "agreement":
             assert self.share is not None and self.agreed_period is not None
             own_share = self.share if key == "A" else 1.0 - self.share
-            value = p.surplus * own_share * side.discount**self.agreed_period
+            if side.agreement is None:
+                worth = p.surplus * own_share
+            else:
+                worth = side.agreement[0] + side.agreement[1] * own_share
+            value = worth * side.discount**self.agreed_period
             value -= side.delay_cost * self.agreed_period
             if self.committed[key] and side.commitment is not None:
                 violated = (
@@ -270,9 +281,10 @@ class BargainingState(LoggedState):
             return value
         if label == "breakdown":
             return side.breakdown_value - side.delay_cost * self.period
-        # impasse or vetoed
-        periods = self.period if label == "impasse" else (self.agreed_period or 0)
-        return side.impasse_value - side.delay_cost * periods
+        if label == "impasse":
+            return side.impasse_value - side.delay_cost * self.period
+        vetoed = side.impasse_value if side.vetoed_value is None else side.vetoed_value
+        return vetoed - side.delay_cost * (self.agreed_period or 0)
 
     def returns(self) -> dict[str, float]:
         if self.label is None:
@@ -285,8 +297,10 @@ class BargainingState(LoggedState):
                 result[consent.id] = consent.base + consent.per_share * self.share
             elif self.label == "vetoed":
                 result[consent.id] = consent.veto_value
+            elif self.label == "breakdown":
+                result[consent.id] = consent.breakdown_value
             else:
-                result[consent.id] = 0.0
+                result[consent.id] = consent.impasse_value
         return result
 
     def outcome(self) -> Outcome:
@@ -296,6 +310,8 @@ class BargainingState(LoggedState):
         metrics = {"period": float(self.period), "horizon": float(self.params.horizon)}
         if self.share is not None:
             metrics["share"] = self.share
+        metrics[f"commit:{self.params.a_role}"] = 1.0  # both principals stake their position
+        metrics[f"commit:{self.params.b_role}"] = 1.0
         for key in ("A", "B"):
             side = self.params.side(key)
             if self.label == "agreement" and self.committed[key] and side.commitment is not None:
@@ -464,12 +480,23 @@ def _side(name: str, data: Any, key: str) -> SideParams:
             "impasse_value",
             "commitment",
             "commitment_cost",
+            "agreement",
+            "vetoed_value",
         ),
     )
     discount = finite(f"{name}.discount", mapping.get("discount", 1.0))
     if not 0.0 < discount <= 1.0:
         raise ConfigError(f"{name}.discount must lie in (0, 1]")
     commitment = mapping.get("commitment")
+    agreement = None
+    if "agreement" in mapping:
+        raw = as_mapping(f"{name}.agreement", mapping["agreement"])
+        reject_unknown(f"{name}.agreement", raw, ("base", "per_share"))
+        agreement = (
+            finite(f"{name}.agreement.base", raw.get("base", 0.0)),
+            finite(f"{name}.agreement.per_share", raw.get("per_share", 0.0)),
+        )
+    vetoed = mapping.get("vetoed_value")
     return SideParams(
         discount=discount,
         delay_cost=nonnegative(f"{name}.delay_cost", mapping.get("delay_cost", 0.0)),
@@ -479,6 +506,8 @@ def _side(name: str, data: Any, key: str) -> SideParams:
         impasse_value=finite(f"{name}.impasse_value", require(name, mapping, "impasse_value")),
         commitment=None if commitment is None else probability(f"{name}.commitment", commitment),
         commitment_cost=nonnegative(f"{name}.commitment_cost", mapping.get("commitment_cost", 0.0)),
+        agreement=agreement,
+        vetoed_value=None if vetoed is None else finite(f"{name}.vetoed_value", vetoed),
     )
 
 
@@ -511,7 +540,9 @@ def build(config: Mapping[str, Any]) -> BargainingGame:
     for i, raw in enumerate(as_list("bargaining.consent", config.get("consent", []))):
         item = as_mapping(f"bargaining.consent[{i}]", raw)
         reject_unknown(
-            f"bargaining.consent[{i}]", item, ("role", "base", "per_share", "veto_value")
+            f"bargaining.consent[{i}]",
+            item,
+            ("role", "base", "per_share", "veto_value", "breakdown_value", "impasse_value"),
         )
         consent.append(
             ConsentParams(
@@ -519,6 +550,8 @@ def build(config: Mapping[str, Any]) -> BargainingGame:
                 base=finite("consent.base", item.get("base", 0.0)),
                 per_share=finite("consent.per_share", item.get("per_share", 0.0)),
                 veto_value=finite("consent.veto_value", item.get("veto_value", 0.0)),
+                breakdown_value=finite("consent.breakdown_value", item.get("breakdown_value", 0.0)),
+                impasse_value=finite("consent.impasse_value", item.get("impasse_value", 0.0)),
             )
         )
     ids = [a_role, b_role, *(c.id for c in consent)]

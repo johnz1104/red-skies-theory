@@ -198,7 +198,10 @@ class AlignmentState(LoggedState):
         tags = [f"{client}:{choice}" for client, choice in self.choices.items()]
         tags += [f"offer:{patron}={level}" for patron, level in self.offers.items()]
         aligned = sum(1 for c in self.choices.values() if c != "nonaligned")
-        return Outcome(self.choices[first], tuple(tags), {"aligned_clients": float(aligned)})
+        metrics = {"aligned_clients": float(aligned)}
+        for patron, level in self.offers.items():  # commitment: the offer level
+            metrics[f"commit:{patron}"] = LEVELS.index(level) / (len(LEVELS) - 1)
+        return Outcome(self.choices[first], tuple(tags), metrics)
 
     def observation(self, role: str) -> tuple[float, ...]:
         is_patron = any(p.id == role for p in self.params.patrons)

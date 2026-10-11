@@ -42,6 +42,29 @@ SMALL_CONFIGS: list[tuple[str, Any]] = [
 ]
 
 
+@pytest.mark.parametrize(("family", "make"), SMALL_CONFIGS)
+def test_outcomes_report_each_principals_commitment(family: str, make: Any) -> None:
+    game = build_family(family, make())
+    principals = {
+        "crisis": lambda g: [r.id for r in g.params.roles],
+        "bargaining": lambda g: [g.params.a_role, g.params.b_role],
+        "intervention": lambda g: [g.params.patron, g.params.rival],
+        "alignment": lambda g: [p.id for p in g.params.patrons],
+        "attrition": lambda g: [s.id for s in g.params.sponsors],
+    }[family](game)
+    rng = np.random.default_rng(0)
+    for _ in range(20):
+        state = game.new_initial_state()
+        while not state.is_terminal():
+            if state.current_player() == CHANCE:
+                state.apply_action(sample_action(dict(state.chance_outcomes()), rng))
+            else:
+                state.apply_action(str(rng.choice(state.legal_actions())))
+        metrics = state.outcome().metrics
+        for role in principals:
+            assert 0.0 <= metrics[f"commit:{role}"] <= 1.0
+
+
 def _perturb_numbers(value: Any, rng: np.random.Generator) -> Any:
     if isinstance(value, dict):
         return {k: _perturb_numbers(v, rng) for k, v in value.items()}
@@ -234,6 +257,36 @@ def test_bargaining_breakdown_and_commitment_tags() -> None:
     assert outcome.label == "agreement" and outcome.metrics["share"] == 0.5
     assert "P1:broke_commitment" in outcome.tags
     assert state.returns()["P1"] == pytest.approx(2.0 * 0.5 - 1.0)
+
+
+def test_explicit_bargaining_values_reproduce_the_surplus_split() -> None:
+    plain = configs.bargaining_config(horizon=3)
+    explicit = configs.bargaining_config(horizon=3)
+    for side in explicit["sides"].values():
+        side["agreement"] = {"base": 0.0, "per_share": explicit["surplus"]}
+    explicit["surplus"] = 0.0
+    a = bargaining.solve(bargaining.build(plain))
+    b = bargaining.solve(bargaining.build(explicit))
+    assert a.offer == b.offer and a.accept == b.accept and a.commit == b.commit
+    assert a.values == pytest.approx(b.values)
+
+
+def test_bargaining_vetoed_and_consent_values() -> None:
+    config = configs.bargaining_config(horizon=2, commitments=False)
+    config["sides"]["A"]["vetoed_value"] = -0.7
+    config["consent"][0] |= {"veto_value": 5.0, "breakdown_value": -1.5, "impasse_value": 0.4}
+    game = bargaining.build(config)
+    vetoed = game.new_initial_state()
+    for action in ("offer_050", "accept", "veto"):
+        vetoed.apply_action(action)
+    assert vetoed.outcome().label == "vetoed"
+    assert vetoed.returns()["P1"] == pytest.approx(-0.7)
+    assert vetoed.returns()["P2"] == pytest.approx(0.3)  # falls back to the impasse value
+    broken = game.new_initial_state()
+    for action in ("offer_050", "reject", "breakdown"):
+        broken.apply_action(action)
+    assert broken.outcome().label == "breakdown"
+    assert broken.returns()["C"] == pytest.approx(-1.5)
 
 
 def test_intervention_solves_and_reports_tags() -> None:

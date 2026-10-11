@@ -51,6 +51,7 @@ from .common import (
 NAME = "attrition"
 OUTCOMES = ("a_victory", "b_victory", "partition", "a_withdrew", "b_withdrew", "stalemate")
 LEVELS = ("withdraw", "low", "high", "direct", "negotiate")
+EFFORT = {"withdraw": 0.0, "low": 1 / 3, "high": 2 / 3, "direct": 1.0, "negotiate": 1 / 3}
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +118,7 @@ class AttritionState(LoggedState):
         self.pending: list[str] = []
         self.cost: dict[str, float] = {s.id: 0.0 for s in params.sponsors}
         self.weariness: dict[str, float] = {s.id: 0.0 for s in params.sponsors}
+        self.effort: dict[str, float] = {s.id: 0.0 for s in params.sponsors}
         self.ever_direct: set[str] = set()
         self.battle = False
         self.label: str | None = None
@@ -200,6 +202,7 @@ class AttritionState(LoggedState):
                 sponsor = p.sponsor(role)
                 self.cost[role] += sponsor.cost_scale * p.costs[level]
                 self.weariness[role] += p.weariness[level]
+                self.effort[role] += EFFORT[choice]
                 if choice == "direct":
                     self.ever_direct.add(role)
         self.last_choices = dict(self.choices)
@@ -270,6 +273,11 @@ class AttritionState(LoggedState):
         for sponsor in self.params.sponsors:
             metrics[f"cost:{sponsor.id}"] = self.cost[sponsor.id]
             metrics[f"weariness:{sponsor.id}"] = self.weariness[sponsor.id]
+            # commitment: effort over the war relative to full effort for max_rounds
+            metrics[f"commit:{sponsor.id}"] = min(
+                1.0, self.effort[sponsor.id] / self.params.max_rounds
+            )
+            metrics[f"effort:{sponsor.id}"] = self.effort[sponsor.id] / max(1, self.round + 1)
         return Outcome(self.label, tuple(tags), metrics)
 
     def observation(self, role: str) -> tuple[float, ...]:

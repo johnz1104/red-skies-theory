@@ -311,6 +311,10 @@ class CrisisState(LoggedState):
             "escalation_a": float(self.added["a"]),
             "escalation_b": float(self.added["b"]),
         }
+        top = self.params.max_rung
+        for role in self.params.roles:  # commitment: a stake for taking part, more per rung
+            added = self.added[role.side] if role.side in ("a", "b") else 0
+            metrics[f"commit:{role.id}"] = (1.0 + added) / (1.0 + top)
         return Outcome(self.label, tuple(self.tags), metrics)
 
     def observation(self, role: str) -> tuple[float, ...]:
