@@ -354,6 +354,65 @@ def test_attrition_partition_withdrawal_and_heuristic() -> None:
     assert labels <= set(attrition.OUTCOMES)
 
 
+def _uphill_war(win_value: float, rounds: int = 28) -> dict[str, Any]:
+    """A winnable war from a weak start: side a starts at 0.35 and needs 10 net wins."""
+
+    return {
+        "sponsors": {
+            "a1": {
+                "side": "a",
+                "capacity": 1.2,
+                "direct": True,
+                "values": configs.attrition_values(win_value, -5, 1.0, -5, win_value, 0.5),
+            },
+            "b1": {
+                "side": "b",
+                "capacity": 0.8,
+                "values": configs.attrition_values(-2, 2, 0.3, 2, -2, 0),
+            },
+        },
+        "leads": {"a": "a1", "b": "b1"},
+        "local_strength": {"a": 1.0, "b": 1.6},
+        "initial_control": 0.35,
+        "step": 0.05,
+        "max_rounds": rounds,
+        "weariness": {"high": 0.0, "direct": 0.0},
+    }
+
+
+def test_lookahead_matches_the_gamblers_ruin_formula() -> None:
+    config = _uphill_war(5.0, rounds=2000)
+    config["costs"] = {"low": 0.0, "high": 0.0, "direct": 0.0}
+    game = attrition.build(config)
+    state = game.new_initial_state()
+    policy = attrition.AttritionLookaheadPolicy(game)
+    value = policy.continuation_value(state, "a1", "direct")
+    p_win = state.win_probability({"a1": "direct", "b1": "low"})
+    r, start, cells = (1 - p_win) / p_win, 4, 14  # control 0.35 is 4 steps above 0.15
+    reach = (1 - r**start) / (1 - r**cells)
+    assert value == pytest.approx(reach * 5.0 + (1 - reach) * -5.0, abs=1e-6)
+
+
+def test_lookahead_fights_a_winnable_war_from_a_weak_start() -> None:
+    game = attrition.build(_uphill_war(10.0))
+    state = game.new_initial_state()
+    myopic = attrition.AttritionHeuristicPolicy(game).action_probabilities(state)
+    lookahead = attrition.AttritionLookaheadPolicy(game).action_probabilities(state)
+    assert max(myopic, key=myopic.get) == "negotiate"  # the straight-line value of 0.35 is low
+    assert max(lookahead, key=lookahead.get) == "direct"
+
+
+def test_lookahead_avoids_levels_that_would_force_it_out() -> None:
+    config = _uphill_war(10.0)
+    config["weariness"] = {"high": 0.05, "direct": 0.2}
+    config["weariness_limit"] = 0.3
+    game = attrition.build(config)
+    state = game.new_initial_state()
+    state.weariness["a1"] = 0.25  # one more round of direct effort forces a1 out
+    choice = attrition.AttritionLookaheadPolicy(game).action_probabilities(state)
+    assert max(choice, key=choice.get) != "direct"
+
+
 def test_attrition_weariness_forces_withdrawal() -> None:
     config = configs.attrition_config()
     config["weariness"] = {"high": 0.5, "direct": 1.0}

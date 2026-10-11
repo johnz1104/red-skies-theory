@@ -16,11 +16,13 @@ end the war in partition.
 Outcome labels: ``a_victory``, ``b_victory``, ``partition``, ``a_withdrew``
 (every A sponsor left), ``b_withdrew``, ``stalemate`` (round limit). Long
 horizons make the tree too large for exact methods, so the baseline is
-:class:`AttritionHeuristicPolicy`.
+:class:`AttritionLookaheadPolicy` (:class:`AttritionHeuristicPolicy`, a
+one-round rule, is kept for comparison).
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -349,6 +351,77 @@ class AttritionHeuristicPolicy:
             scores[action] = expected - sponsor.cost_scale * p.costs[level]
             if state.weariness[role] + p.weariness[level] >= p.weariness_limit:
                 scores[action] -= abs(current_value)  # avoid being forced out
+        best = max(legal, key=lambda a: (scores[a], -legal.index(a)))
+        return {action: (1.0 if action == best else 0.0) for action in legal}
+
+
+class AttritionLookaheadPolicy:
+    """Baseline that looks ahead to the end of the war.
+
+    For each effort level, with the other sponsors assumed to repeat their last
+    choices, the value of continuing is computed exactly for the random walk of
+    control: victory or defeat at the thresholds, stalemate at the round limit
+    (or the withdrawal value, if that level's weariness would force the sponsor
+    out first), minus the per-round cost of the effort. The role negotiates or
+    withdraws when that settles for more. Unlike the one-round heuristic, a
+    weak starting position does not by itself make settling look better.
+    """
+
+    def __init__(self, game: AttritionGame) -> None:
+        self.params = game.params
+
+    def continuation_value(self, state: AttritionState, role: str, action: str) -> float:
+        """Value of fighting on at *action* while the others repeat their last choices."""
+
+        p = self.params
+        sponsor = p.sponsor(role)
+        level = p.level_index(action)
+        trial = {s.id: state.last_choices.get(s.id, "low") for s in p.sponsors}
+        trial[role] = action
+        p_a = state.win_probability(trial)
+        cost = sponsor.cost_scale * p.costs[level]
+        rounds = max(0, p.max_rounds - state.round)
+        end_value = sponsor.values["stalemate"]
+        per_round = p.weariness[level]
+        if per_round > 0.0:
+            room = p.weariness_limit - state.weariness[role]
+            until_out = max(1, math.ceil(room / per_round - 1e-12))
+            if until_out < rounds:
+                rounds = until_out
+                end_value = sponsor.values["a_withdrew" if sponsor.side == "a" else "b_withdrew"]
+        low, high = 1.0 - p.victory_threshold, p.victory_threshold
+        cells = max(2, round((high - low) / p.step))
+        values = [end_value] * (cells + 1)
+        values[0], values[cells] = sponsor.values["b_victory"], sponsor.values["a_victory"]
+        for _ in range(rounds):
+            values = [
+                values[0],
+                *(
+                    p_a * values[i + 1] + (1.0 - p_a) * values[i - 1] - cost
+                    for i in range(1, cells)
+                ),
+                values[cells],
+            ]
+        position = min(cells - 1, max(1, round((state.control - low) / p.step)))
+        return values[position]
+
+    def action_probabilities(self, state: GameState) -> dict[str, float]:
+        if not isinstance(state, AttritionState):
+            raise TypeError("AttritionLookaheadPolicy needs an AttritionState")
+        p = self.params
+        role = state.current_player()
+        sponsor = p.sponsor(role)
+        legal = state.legal_actions()
+        scores: dict[str, float] = {}
+        for action in legal:
+            if action == "withdraw":
+                scores[action] = sponsor.values[
+                    "a_withdrew" if sponsor.side == "a" else "b_withdrew"
+                ]
+            elif action == "negotiate":
+                scores[action] = sponsor.values["partition"]
+            else:
+                scores[action] = self.continuation_value(state, role, action)
         best = max(legal, key=lambda a: (scores[a], -legal.index(a)))
         return {action: (1.0 if action == best else 0.0) for action in legal}
 
