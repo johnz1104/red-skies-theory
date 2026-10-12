@@ -1,4 +1,4 @@
-"""Exact tree algorithms: backward induction, best responses, NashConv, CFR+."""
+"""Tree algorithms: backward induction, best responses, NashConv, CFR+, logit QRE."""
 
 from .backward_induction import (
     BackwardInductionResult,
@@ -7,6 +7,7 @@ from .backward_induction import (
 )
 from .best_response import BestResponse, NashConvResult, best_response, nash_conv
 from .cfr import CFRResult, cfr_plus
+from .qre import QREResult, logit_qre
 
 __all__ = [
     "BackwardInductionResult",
@@ -14,8 +15,10 @@ __all__ = [
     "CFRResult",
     "NashConvResult",
     "NotPerfectInformationError",
+    "QREResult",
     "backward_induction",
     "best_response",
     "cfr_plus",
+    "logit_qre",
     "nash_conv",
 ]

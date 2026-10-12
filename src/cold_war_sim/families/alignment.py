@@ -10,6 +10,17 @@ A patron pays its offer's cost only to a client that aligns with it, gains
 from clients that align with it and loses from clients that align with a
 rival. Outcome label: the first client's choice (``aligned_<patron>`` or
 ``nonaligned``); every client's choice is also a tag ``<client>:<choice>``.
+
+**Offer returns** (optional): a patron whose offer is taken up by the first
+client also gets ``offer_return[level]``, what the offer is worth to it beyond
+the clients it wins (for example an investment's expected payoff).
+
+**Forbidding** (optional): a patron with ``control`` over some clients may,
+once the offers are revealed, ``forbid`` those clients to align with a rival.
+A client that defies the order loses ``control[client]`` from its utility of
+that alignment (for a chance client, inside its logit), and the forbidding
+patron pays ``forbid_cost``. The choice is public, and tagged
+``<patron>:forbade``.
 """
 
 from __future__ import annotations
@@ -39,6 +50,7 @@ from .common import (
 
 NAME = "alignment"
 LEVELS = ("none", "aid", "aid_guarantee")
+FORBID = ("allow", "forbid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +60,9 @@ class Patron(ImmutableParams):
     offer_cost: tuple[float, float, float]
     gain: tuple[tuple[str, float], ...]  # per client
     loss: tuple[tuple[str, float], ...]
+    control: tuple[tuple[str, float], ...] = ()  # client -> penalty for defying a forbid
+    forbid_cost: float = 0.0
+    offer_return: tuple[float, float, float] = (0.0, 0.0, 0.0)  # if the first client takes it
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,9 +105,30 @@ class AlignmentGame:
     def new_initial_state(self) -> AlignmentState:
         return AlignmentState(self.params)
 
+    def solver_state(self) -> AlignmentState:
+        """A root for tree solvers in which the trailing chance clients are folded
+        into expected returns.
+
+        Chance clients that choose after every player decide nothing anyone reacts
+        to, so their choices only add expected gains and losses; folding them keeps
+        the tree small. Players' information states are unchanged, so a policy
+        solved on this tree plays the full game.
+        """
+
+        return AlignmentState(self.params, fold_tail=True)
+
+
+def _tail_start(params: AlignmentParams) -> int:
+    """Index of the first client of the trailing run of chance clients (never 0)."""
+
+    start = len(params.clients)
+    while start > 1 and params.clients[start - 1].mode == "chance":
+        start -= 1
+    return start
+
 
 class AlignmentState(LoggedState):
-    def __init__(self, params: AlignmentParams) -> None:
+    def __init__(self, params: AlignmentParams, *, fold_tail: bool = False) -> None:
         game = AlignmentGame(params)
         super().__init__(game.roles)
         self.params = params
@@ -101,6 +137,17 @@ class AlignmentState(LoggedState):
         self.client_index = 0
         self.choices: dict[str, str] = {}
         self.done = False
+        self.stop = _tail_start(params) if fold_tail else len(params.clients)
+        self.controllers = tuple(p for p in params.patrons if p.control)
+        self.forbid_index = 0
+        self.forbids: dict[str, bool] = {}
+
+    def _forbidding(self) -> bool:
+        """True while a controlling patron still has to decide whether to forbid."""
+
+        return self.patron_index >= len(self.params.patrons) and self.forbid_index < len(
+            self.controllers
+        )
 
     def _client(self) -> Client:
         return self.params.clients[self.client_index]
@@ -110,6 +157,8 @@ class AlignmentState(LoggedState):
             return TERMINAL
         if self.patron_index < len(self.params.patrons):
             return self.params.patrons[self.patron_index].id
+        if self._forbidding():
+            return self.controllers[self.forbid_index].id
         client = self._client()
         return client.id if client.mode == "player" else CHANCE
 
@@ -125,6 +174,8 @@ class AlignmentState(LoggedState):
             return ()
         if self.patron_index < len(self.params.patrons):
             return LEVELS
+        if self._forbidding():
+            return FORBID
         return self._client_options()
 
     def client_utility(self, client: Client, choice: str) -> float:
@@ -133,12 +184,20 @@ class AlignmentState(LoggedState):
         patron_id = choice.removeprefix("aligned_")
         patron = next(p for p in self.params.patrons if p.id == patron_id)
         level = LEVELS.index(self.offers.get(patron_id, "none"))
-        return _lookup(client.affinity, patron_id) + patron.offer_value[level]
+        utility = _lookup(client.affinity, patron_id) + patron.offer_value[level]
+        for other in self.controllers:  # defying a rival patron's order
+            if other.id != patron_id and self.forbids.get(other.id, False):
+                utility -= _lookup(other.control, client.id)
+        return utility
 
     def chance_outcomes(self) -> tuple[tuple[str, float], ...]:
         if self.current_player() != CHANCE:
             return ()
-        client = self._client()
+        return self._choice_probabilities(self._client())
+
+    def _choice_probabilities(self, client: Client) -> tuple[tuple[str, float], ...]:
+        """A chance client's logit choice given the revealed offers."""
+
         options = self._client_options()
         utilities = [self.client_utility(client, o) / client.temperature for o in options]
         top = max(utilities)
@@ -163,12 +222,16 @@ class AlignmentState(LoggedState):
             if self.patron_index == len(self.params.patrons):
                 for patron_id, level in self.offers.items():
                     self.log(f"offer:{patron_id}={level}")
+        elif self._forbidding():
+            self.forbids[player] = action == "forbid"
+            self.log(f"{player}:{action}")
+            self.forbid_index += 1
         else:
             client = self._client()
             self.choices[client.id] = action
             self.log(f"{client.id}={action}")
             self.client_index += 1
-            if self.client_index == len(self.params.clients):
+            if self.client_index >= self.stop:
                 self.done = True
         self._history.append(action)
 
@@ -176,15 +239,25 @@ class AlignmentState(LoggedState):
         if not self.done:
             raise ConfigError("returns requested before alignment is settled")
         result: dict[str, float] = {}
+        folded = [c for c in self.params.clients if c.id not in self.choices]
+        odds = {c.id: dict(self._choice_probabilities(c)) for c in folded}
         for patron in self.params.patrons:
             level = LEVELS.index(self.offers[patron.id])
             total = 0.0
             for client in self.params.clients:
-                choice = self.choices[client.id]
-                if choice == f"aligned_{patron.id}":
-                    total += _lookup(patron.gain, client.id) - patron.offer_cost[level]
-                elif choice != "nonaligned":
-                    total -= _lookup(patron.loss, client.id)
+                if client.id in self.choices:
+                    chances = {self.choices[client.id]: 1.0}
+                else:
+                    chances = odds[client.id]
+                for choice, prob in chances.items():
+                    if choice == f"aligned_{patron.id}":
+                        total += prob * (_lookup(patron.gain, client.id) - patron.offer_cost[level])
+                    elif choice != "nonaligned":
+                        total -= prob * _lookup(patron.loss, client.id)
+            if self.forbids.get(patron.id, False):
+                total -= patron.forbid_cost
+            if self.choices[self.params.clients[0].id] == f"aligned_{patron.id}":
+                total += patron.offer_return[level]
             result[patron.id] = total
         for client in self.params.clients:
             if client.mode == "player":
@@ -197,8 +270,11 @@ class AlignmentState(LoggedState):
         first = self.params.clients[0].id
         tags = [f"{client}:{choice}" for client, choice in self.choices.items()]
         tags += [f"offer:{patron}={level}" for patron, level in self.offers.items()]
+        tags += [f"{patron}:forbade" for patron, forbade in self.forbids.items() if forbade]
         aligned = sum(1 for c in self.choices.values() if c != "nonaligned")
         metrics = {"aligned_clients": float(aligned)}
+        for patron, forbade in self.forbids.items():
+            metrics[f"forbade:{patron}"] = 1.0 if forbade else 0.0
         for patron, level in self.offers.items():  # commitment: the offer level
             metrics[f"commit:{patron}"] = LEVELS.index(level) / (len(LEVELS) - 1)
         return Outcome(self.choices[first], tuple(tags), metrics)
@@ -221,6 +297,7 @@ class AlignmentState(LoggedState):
             mine / len(self.params.clients),
             self.client_index / len(self.params.clients),
             len(self.choices) / len(self.params.clients),
+            1.0 if any(self.forbids.values()) else 0.0,
         )
 
 
@@ -267,11 +344,16 @@ def build(config: Mapping[str, Any]) -> AlignmentGame:
     ).items():
         name = f"alignment.patrons.{patron_id}"
         item = as_mapping(name, raw)
-        reject_unknown(name, item, ("offer_value", "offer_cost", "gain", "loss"))
+        reject_unknown(
+            name,
+            item,
+            ("offer_value", "offer_cost", "offer_return", "gain", "loss", "control", "forbid_cost"),
+        )
         gain = as_mapping(f"{name}.gain", item.get("gain", {}))
         loss = as_mapping(f"{name}.loss", item.get("loss", {}))
-        if not set(gain) <= client_ids or not set(loss) <= client_ids:
-            raise ConfigError(f"{name}: gain/loss refer to unknown clients")
+        control = as_mapping(f"{name}.control", item.get("control", {}))
+        if not set(gain) | set(loss) | set(control) <= client_ids:
+            raise ConfigError(f"{name}: gain/loss/control refer to unknown clients")
         patrons.append(
             Patron(
                 id=identifier(name, patron_id),
@@ -287,6 +369,15 @@ def build(config: Mapping[str, Any]) -> AlignmentGame:
                 ),
                 gain=tuple((k, finite(f"{name}.gain.{k}", v)) for k, v in gain.items()),
                 loss=tuple((k, nonnegative(f"{name}.loss.{k}", v)) for k, v in loss.items()),
+                control=tuple(
+                    (k, nonnegative(f"{name}.control.{k}", v)) for k, v in control.items()
+                ),
+                forbid_cost=finite(f"{name}.forbid_cost", item.get("forbid_cost", 0.0)),
+                offer_return=_triple(
+                    f"{name}.offer_return",
+                    as_mapping(name, item.get("offer_return", {})),
+                    (0.0, 0.0, 0.0),
+                ),
             )
         )
     if len(patrons) < 1 or not clients:

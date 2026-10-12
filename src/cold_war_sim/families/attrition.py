@@ -365,10 +365,16 @@ class AttritionLookaheadPolicy:
     out first), minus the per-round cost of the effort. The role negotiates or
     withdraws when that settles for more. Unlike the one-round heuristic, a
     weak starting position does not by itself make settling look better.
+
+    With ``temperature > 0`` the choice is a logit (quantal) response:
+    ``P(action)`` is proportional to ``exp(score / temperature)``.
     """
 
-    def __init__(self, game: AttritionGame) -> None:
+    def __init__(self, game: AttritionGame, temperature: float = 0.0) -> None:
+        if temperature < 0.0:
+            raise ConfigError("temperature must be non-negative")
         self.params = game.params
+        self.temperature = temperature
 
     def continuation_value(self, state: AttritionState, role: str, action: str) -> float:
         """Value of fighting on at *action* while the others repeat their last choices."""
@@ -422,6 +428,11 @@ class AttritionLookaheadPolicy:
                 scores[action] = sponsor.values["partition"]
             else:
                 scores[action] = self.continuation_value(state, role, action)
+        if self.temperature > 0.0:
+            top = max(scores.values())
+            weights = {a: math.exp((scores[a] - top) / self.temperature) for a in legal}
+            total = sum(weights.values())
+            return {a: w / total for a, w in weights.items()}
         best = max(legal, key=lambda a: (scores[a], -legal.index(a)))
         return {action: (1.0 if action == best else 0.0) for action in legal}
 
