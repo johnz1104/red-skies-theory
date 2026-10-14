@@ -299,3 +299,148 @@ def alignment_config() -> dict[str, Any]:
             },
         },
     }
+
+
+def attrition_offers_config(
+    max_rounds: int = 1,
+    *,
+    approval: bool = False,
+    consent: bool = False,
+    red_line: bool = False,
+    opens: int = 0,
+    commitments: bool = False,
+    levels: bool = False,
+    entrant: bool = False,
+    proxy: float = 0.0,
+    hidden: tuple[float, float] | None = None,
+    momentum: float = 0.0,
+    unseen: tuple[float, float] | None = None,
+) -> dict[str, Any]:
+    """A two-sponsor war that bargains while fighting: A's resolve and B's strength
+    are private, the front can hold, and A offers a share each round. With
+    *commitments*, A may commit to at least 0.7 and B to at least half. With *levels*,
+    each side has three kinds instead of two. With *entrant*, a third power ``c1`` on
+    B's side has stakes of its own (committed or not) and leads B once it goes direct.
+    A positive *proxy* gives the consent role ``b2`` that gain per round in which another
+    B sponsor fights direct. *hidden* = (nature's weight, others' belief) makes that
+    gain a private type of ``b2``: it holds out (gain in full) or settles (none). A
+    positive *momentum* shifts the local balance with the front, on a finer step (five
+    cells, the starting line on the grid) so that it matters within two rounds.
+    *unseen* = (A's belief, B's own belief) that B is strong makes B's strength a type
+    no one sees."""
+
+    def values(av: float, bv: float, aw: float, bw: float, refused: float) -> dict[str, float]:
+        table = attrition_values(av, bv, 0.0, aw, bw, 0.0)
+        if approval:
+            table["refused"] = refused
+        return table
+
+    config: dict[str, Any] = {
+        "sponsors": {
+            "a1": {
+                "side": "a",
+                "capacity": 1.0,
+                "direct": red_line,
+                "values": values(2, -2, -2.5, 2, 0.0),
+                "settlement": {"base": -1.5, "per_share": 3.0},
+            },
+            "b1": {
+                "side": "b",
+                "capacity": 1.0,
+                "direct": red_line,
+                "values": values(-2, 2, 2, -2.5, -0.2),
+                "settlement": {"base": -1.5, "per_share": 3.0},
+            },
+        },
+        "local_strength": {"a": 1.0, "b": 1.0},
+        "initial_control": 0.5,
+        "step": 0.4,
+        "victory_threshold": 0.85,
+        "max_rounds": max_rounds,
+        "weariness": {"high": 0.0, "direct": 0.0},
+        "costs": {"low": 0.1, "high": 0.3, "direct": 0.6},
+        "offers": {"grid": [0.3, 0.5, 0.7], "proposer": "a", "opens": opens},
+        "types": {
+            "a": {"prior": 0.5, "strong": {"cost": 0.5}, "weak": {"cost": 3.0}},
+            "b": {"prior": 0.5, "strong": {"strength": 1.6}, "weak": {"strength": 0.6}},
+        },
+        "mobility": {"space": 3.0, "sharpness": 2.0},
+    }
+    if approval:
+        config["approval"] = ["b1"]
+    if consent:
+        config["sponsors"]["b2"] = {
+            "side": "b",
+            "capacity": 0.0,
+            "values": values(-1, 1, 1, -1, 0.0),
+            "settlement": {"base": -0.5, "per_share": 0.5},
+        }
+        config["offers"]["consent"] = [{"role": "b2", "veto_cost": 0.1}]
+        if proxy > 0.0:
+            config["sponsors"]["b2"]["proxy_gain"] = proxy
+        if hidden is not None:
+            weight, belief = hidden
+            config["types"]["b2"] = {
+                "private": True,
+                "levels": {
+                    "holds_out": {"weight": weight, "belief": belief, "proxy": 1.0},
+                    "settles": {"weight": 1.0 - weight, "belief": 1.0 - belief, "proxy": 0.0},
+                },
+            }
+    if red_line:
+        config["red_lines"] = {"b1": {"above": 0.5, "audience_cost": 0.5}}
+    if levels:
+        config["types"] = {
+            "a": {
+                "levels": {
+                    "resolute": {"weight": 1.0, "cost": 0.5},
+                    "firm": {"weight": 1.0, "cost": 1.5},
+                    "wavering": {"weight": 1.0, "cost": 3.0},
+                }
+            },
+            "b": {
+                "levels": {
+                    "strong": {"weight": 1.0, "strength": 1.6},
+                    "steady": {"weight": 2.0, "strength": 1.0},
+                    "weak": {"weight": 1.0, "strength": 0.6},
+                }
+            },
+        }
+    if entrant:
+        config["sponsors"]["c1"] = {
+            "side": "b",
+            "capacity": 1.0,
+            "direct": True,
+            "values": values(-1.5, 1.5, 1.5, -1.5, 0.0),
+            "settlement": {"base": -1.0, "per_share": 2.0},
+        }
+        config["types"]["c1"] = {
+            "levels": {
+                "committed": {"weight": 1.0, "cost": 1.0},
+                "uncommitted": {"weight": 1.0, "cost": 6.0},
+            }
+        }
+        config["lead_on_entry"] = {"c1": "b"}
+    if unseen is not None:
+        other, own = unseen
+        config["types"]["b"] = {
+            "unseen": True,
+            "levels": {
+                "strong": {"weight": 0.5, "belief": other, "own_belief": own, "strength": 1.6},
+                "weak": {
+                    "weight": 0.5,
+                    "belief": 1.0 - other,
+                    "own_belief": 1.0 - own,
+                    "strength": 0.6,
+                },
+            },
+        }
+    if momentum > 0.0:
+        config["momentum"] = momentum
+        config["step"] = 0.175
+    if commitments:
+        config["commitments"] = {
+            "a1": {"at_least": 0.7, "audience_cost": 0.5},
+            "b1": {"at_least": 0.5, "audience_cost": 0.5},
+        }
+    return config
