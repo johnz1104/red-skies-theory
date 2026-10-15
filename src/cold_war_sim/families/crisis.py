@@ -4,7 +4,9 @@ Two sides (``a`` and ``b``) contest a stake; neutral roles may pressure either
 side. The interaction is a *stage script* assembled from a small library:
 
 ``types``     chance draws each listed role's private resolve (and optionally
-              readiness); a high-resolve role finds war less costly.
+              readiness); a high-resolve role finds war less costly. A role may
+              also draw private ``stakes``: named levels whose offsets shift its
+              own outcome values (what it would gain from each outcome).
 ``intel``     a noisy report about one role's type, seen by chosen observers.
 ``signal``    a public message that sets the sender's stance (hard or soft).
               Conceding after a hard stance carries an audience cost.
@@ -17,13 +19,22 @@ side. The interaction is a *stage script* assembled from a small library:
 
 Outcome labels: ``a_prevails``, ``b_prevails``, ``compromise``,
 ``limited_war``, ``nuclear_war``. Each role values each label; payoffs also
-subtract own escalation, signal, audience and pressure costs.
+subtract own escalation, signal, audience and pressure costs, and the costs an
+option lists for named roles (``costs: {role: x}`` on a move, signal or partner
+option, charged when it is taken; negative for a gain).
+
+**Own beliefs.** A type draw may list roles that hold their own prior about it
+(``resolve_beliefs``, ``stakes_beliefs``), which may differ from nature's: a
+leader's mistaken view of another's resolve or stakes. :meth:`CrisisGame.view`
+gives the game as one role sees it, and :class:`~.crisis_beliefs.CrisisBeliefPolicy`
+lets each role play its part of the solution of its own view. A level that
+nature never draws (weight 0) can still be believed.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ..games.protocol import (
@@ -41,6 +52,7 @@ from .common import (
     as_list,
     as_mapping,
     clamp,
+    finite,
     identifier,
     nonnegative,
     positive_int,
@@ -79,6 +91,20 @@ class Step(ImmutableParams):
     observers: tuple[str, ...] | None = None
     options: tuple[tuple[str, str, float, float], ...] = ()  # (id, kind/stance/side, a, b)
     accident: tuple[float, float, float, float, float, float] = (0.0,) * 6
+    levels: tuple[tuple[str, float], ...] = ()  # a stakes draw: (level, nature's weight)
+    beliefs: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()  # role -> its prior
+    offsets: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()  # level -> (label, x)
+    option_costs: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()  # id -> (role, x)
+
+    def draws(self) -> tuple[tuple[str, float], ...]:
+        """A type draw's outcomes with nature's probabilities."""
+
+        if self.levels:
+            return self.levels
+        return (("high", self.probability), ("low", 1.0 - self.probability))
+
+    def believed_by(self, role: str) -> tuple[tuple[str, float], ...] | None:
+        return next((prior for holder, prior in self.beliefs if holder == role), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +113,18 @@ class CrisisParams(ImmutableParams):
     steps: tuple[Step, ...]
     max_rung: int
     final_outcome: str
+
+    def offset(self, role_id: str, level: str | None, label: str) -> float:
+        """The holder's offset to *label* at its stakes *level*."""
+
+        if level is None:
+            return 0.0
+        for step in self.steps:
+            if step.kind == "type" and step.dimension == "stakes" and step.actor == role_id:
+                for name, table in step.offsets:
+                    if name == level:
+                        return dict(table).get(label, 0.0)
+        return 0.0
 
     def role(self, role_id: str) -> CrisisRole:
         for role in self.roles:
@@ -106,6 +144,40 @@ class CrisisGame:
     def roles(self) -> tuple[str, ...]:
         return tuple(role.id for role in self.params.roles)
 
+    @property
+    def has_beliefs(self) -> bool:
+        return any(step.beliefs for step in self.params.steps)
+
+    def view(self, role: str) -> CrisisGame:
+        """The game as *role* sees it: its own priors at the type draws it holds
+        beliefs about, nature's elsewhere."""
+
+        steps = []
+        for step in self.params.steps:
+            prior = step.believed_by(role) if step.kind == "type" else None
+            if prior is None:
+                steps.append(step)
+            elif step.levels:
+                steps.append(replace(step, levels=prior))
+            else:
+                steps.append(replace(step, probability=dict(prior)["high"]))
+        return CrisisGame(replace(self.params, steps=tuple(steps)))
+
+    def views(self) -> dict[str, CrisisGame]:
+        """Each role's view; roles with the same priors share one game."""
+
+        shared: dict[tuple[object, ...], CrisisGame] = {}
+        result = {}
+        for role in self.roles:
+            signature = tuple(
+                step.believed_by(role) if step.kind == "type" else None
+                for step in self.params.steps
+            )
+            if signature not in shared:
+                shared[signature] = self.view(role)
+            result[role] = shared[signature]
+        return result
+
     def new_initial_state(self) -> CrisisState:
         return CrisisState(self.params)
 
@@ -123,6 +195,7 @@ class CrisisState(LoggedState):
         self.signal_cost: dict[str, float] = {}
         self.deal_by: str | None = None
         self.pressure: list[tuple[str, float]] = []
+        self.action_cost: dict[str, float] = {}
         self.risk_multiplier = 1.0
         self.label: str | None = None
         self.conceded_side: str | None = None
@@ -168,7 +241,7 @@ class CrisisState(LoggedState):
 
     def _chance_pairs(self, step: Step) -> tuple[tuple[str, float], ...]:
         if step.kind == "type":
-            return (("high", step.probability), ("low", 1.0 - step.probability))
+            return step.draws()
         if step.kind == "intel":
             about = self.types[step.actor].get(step.dimension)
             p_alarm = step.probability if about == "high" else 1.0 - step.probability
@@ -220,6 +293,8 @@ class CrisisState(LoggedState):
         actor = step.actor
         option = next((o for o in step.options if o[0] == action), (action, "", 0.0, 0.0))
         self.log(f"{step.kind}:{actor}:{action}")
+        for role, cost in dict(step.option_costs).get(action, ()):
+            self.action_cost[role] = self.action_cost.get(role, 0.0) + cost
         side = self._side(actor)
         if step.kind == "signal":
             stance = option[1]
@@ -291,9 +366,11 @@ class CrisisState(LoggedState):
             value = role.values[self.label]
             if self.label in WAR_OUTCOMES and self.types[role.id].get("resolve") == "high":
                 value *= role.high_resolve_war_factor
+            value += self.params.offset(role.id, self.types[role.id].get("stakes"), self.label)
             if role.side in ("a", "b"):
                 value -= role.escalation_cost * self.added[role.side]
             value -= self.signal_cost.get(role.id, 0.0)
+            value -= self.action_cost.get(role.id, 0.0)
             if self.conceded_side == role.side and self.stance.get(role.id) == "hard":
                 value -= role.audience_cost
             for target_side, cost in self.pressure:
@@ -366,12 +443,29 @@ def _parse_role(role_id: str, data: Any) -> CrisisRole:
 
 
 def _parse_options(
-    name: str, data: Any, kinds: tuple[str, ...], key: str
-) -> tuple[tuple[str, str, float, float], ...]:
+    name: str, data: Any, kinds: tuple[str, ...], key: str, role_ids: set[str]
+) -> dict[str, Any]:
+    """Step fields for a stage's options: the options and any per-role costs."""
+
     options = []
+    costs = []
     for i, raw in enumerate(as_list(name, data)):
-        item = as_mapping(f"{name}[{i}]", raw)
+        item = dict(as_mapping(f"{name}[{i}]", raw))
         option_id = identifier(f"{name}[{i}].id", require(name, item, "id"))
+        listed = as_mapping(f"{name}[{i}].costs", item.pop("costs", {}))
+        for role in listed:
+            if role not in role_ids:
+                raise ConfigError(f"{name}[{i}].costs refers to unknown role {role!r}")
+        if listed:
+            costs.append(
+                (
+                    option_id,
+                    tuple(
+                        (str(role), finite(f"{name}[{i}].costs.{role}", x))
+                        for role, x in listed.items()
+                    ),
+                )
+            )
         if key == "kind":
             reject_unknown(f"{name}[{i}]", item, ("id", "kind", "rungs"))
             kind = require(name, item, "kind")
@@ -405,7 +499,64 @@ def _parse_options(
     ids = [o[0] for o in options]
     if not options or len(set(ids)) != len(ids):
         raise ConfigError(f"{name} needs at least one option and unique ids")
-    return tuple(options)
+    return {"options": tuple(options), "option_costs": tuple(costs)}
+
+
+def _beliefs(
+    name: str, data: Any, holder: str, role_ids: set[str]
+) -> tuple[tuple[str, float], ...]:
+    """Roles that hold their own probability of a high draw."""
+
+    result = []
+    for role, p in as_mapping(name, data).items():
+        if role not in role_ids or role == holder:
+            raise ConfigError(f"{name}: {role!r} must be a known role other than the holder")
+        result.append((str(role), probability(f"{name}.{role}", p)))
+    return tuple(result)
+
+
+def _distribution(name: str, data: Any, levels: tuple[str, ...]) -> tuple[tuple[str, float], ...]:
+    mapping = as_mapping(name, data)
+    reject_unknown(name, mapping, levels)
+    weights = tuple(
+        (level, probability(f"{name}.{level}", mapping.get(level, 0.0))) for level in levels
+    )
+    if abs(sum(w for _, w in weights) - 1.0) > 1e-9:
+        raise ConfigError(f"{name} must sum to 1")
+    return weights
+
+
+def _stakes_step(name: str, dims: Mapping[str, Any], holder: str, role_ids: set[str]) -> Step:
+    """A private draw of the holder's stakes: named levels with offsets to its values."""
+
+    raw = as_mapping(f"{name}.stakes", dims["stakes"])
+    if len(raw) < 2:
+        raise ConfigError(f"{name}.stakes needs at least two levels")
+    levels = tuple(identifier(f"{name}.stakes", level) for level in raw)
+    weights, offsets = {}, []
+    for level in levels:
+        item = as_mapping(f"{name}.stakes.{level}", raw[level])
+        reject_unknown(f"{name}.stakes.{level}", item, ("weight", "offsets"))
+        weights[level] = require(f"{name}.stakes.{level}", item, "weight")
+        table = as_mapping(f"{name}.stakes.{level}.offsets", item.get("offsets", {}))
+        reject_unknown(f"{name}.stakes.{level}.offsets", table, OUTCOMES)
+        offsets.append(
+            (
+                level,
+                tuple((label, finite(f"{name}.offsets.{label}", x)) for label, x in table.items()),
+            )
+        )
+    nature = _distribution(f"{name}.stakes (weights)", weights, levels)
+    beliefs = []
+    for role, prior in as_mapping(f"{name}.stakes_beliefs", dims.get("stakes_beliefs", {})).items():
+        if role not in role_ids or role == holder:
+            raise ConfigError(
+                f"{name}.stakes_beliefs: {role!r} must be a known role other than the holder"
+            )
+        beliefs.append((str(role), _distribution(f"{name}.stakes_beliefs.{role}", prior, levels)))
+    return Step(
+        "type", holder, "stakes", levels=nature, beliefs=tuple(beliefs), offsets=tuple(offsets)
+    )
 
 
 def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
@@ -425,19 +576,39 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
         for role_id, dims in as_mapping(f"{name}.roles", require(name, stage, "roles")).items():
             if role_id not in role_ids:
                 raise ConfigError(f"{name}.roles refers to unknown role {role_id!r}")
-            dims_map = as_mapping(f"{name}.roles.{role_id}", dims)
+            where = f"{name}.roles.{role_id}"
+            dims_map = as_mapping(where, dims)
             reject_unknown(
-                f"{name}.roles.{role_id}", dims_map, ("p_high_resolve", "p_high_readiness")
+                where,
+                dims_map,
+                (
+                    "p_high_resolve",
+                    "p_high_readiness",
+                    "resolve_beliefs",
+                    "stakes",
+                    "stakes_beliefs",
+                ),
             )
             if "p_high_resolve" in dims_map:
+                beliefs = _beliefs(
+                    f"{where}.resolve_beliefs",
+                    dims_map.get("resolve_beliefs", {}),
+                    role_id,
+                    role_ids,
+                )
                 steps.append(
                     Step(
                         "type",
                         role_id,
                         "resolve",
                         probability(f"{name}.p_high_resolve", dims_map["p_high_resolve"]),
+                        beliefs=tuple(
+                            (holder, (("high", p), ("low", 1.0 - p))) for holder, p in beliefs
+                        ),
                     )
                 )
+            elif "resolve_beliefs" in dims_map:
+                raise ConfigError(f"{where}.resolve_beliefs needs p_high_resolve")
             if "p_high_readiness" in dims_map:
                 steps.append(
                     Step(
@@ -447,6 +618,10 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
                         probability(f"{name}.p_high_readiness", dims_map["p_high_readiness"]),
                     )
                 )
+            if "stakes" in dims_map:
+                steps.append(_stakes_step(where, dims_map, role_id, role_ids))
+            elif "stakes_beliefs" in dims_map:
+                raise ConfigError(f"{where}.stakes_beliefs needs stakes")
         return steps
     if kind == "intel":
         reject_unknown(name, stage, ("stage", "about", "dimension", "observers", "accuracy"))
@@ -474,8 +649,12 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
             Step(
                 "signal",
                 actor(),
-                options=_parse_options(
-                    f"{name}.options", require(name, stage, "options"), STANCES, "stance"
+                **_parse_options(
+                    f"{name}.options",
+                    require(name, stage, "options"),
+                    STANCES,
+                    "stance",
+                    role_ids,
                 ),
             )
         ]
@@ -485,8 +664,12 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
             Step(
                 "move",
                 actor(),
-                options=_parse_options(
-                    f"{name}.options", require(name, stage, "options"), MOVE_KINDS, "kind"
+                **_parse_options(
+                    f"{name}.options",
+                    require(name, stage, "options"),
+                    MOVE_KINDS,
+                    "kind",
+                    role_ids,
                 ),
             )
         ]
@@ -499,8 +682,12 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
             Step(
                 "partner",
                 actor(),
-                options=_parse_options(
-                    f"{name}.options", require(name, stage, "options"), SIDES, "target"
+                **_parse_options(
+                    f"{name}.options",
+                    require(name, stage, "options"),
+                    SIDES,
+                    "target",
+                    role_ids,
                 ),
             )
         ]
@@ -551,6 +738,8 @@ def build(config: Mapping[str, Any]) -> CrisisGame:
     drawn: set[tuple[str, str]] = set()
     for step in steps:
         if step.kind == "type":
+            if step.dimension == "stakes" and (step.actor, "stakes") in drawn:
+                raise ConfigError(f"{step.actor}'s stakes are drawn twice")
             drawn.add((step.actor, step.dimension))
         if step.kind == "intel" and (step.actor, step.dimension) not in drawn:
             raise ConfigError(f"intel about {step.actor}.{step.dimension} precedes its type draw")
