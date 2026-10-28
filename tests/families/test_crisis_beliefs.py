@@ -261,3 +261,58 @@ def test_belief_and_stakes_validation(mutate: Callable[[dict[str, Any]], object]
     mutate(config)
     with pytest.raises(ConfigError):
         crisis.build(config)
+
+
+def readiness_crisis(belief: float | None) -> dict[str, Any]:
+    """A may escalate against B, who is likely ready for war (high readiness multiplies the
+    accident risk); A may believe B unready."""
+
+    b_types: dict[str, Any] = {"p_high_readiness": 0.9}
+    if belief is not None:
+        b_types["readiness_beliefs"] = {"A": belief}
+    return {
+        "roles": {
+            "A": {"side": "a", "values": crisis_values(1, -1, 0, -5, -40)},
+            "B": {"side": "b", "values": crisis_values(-1, 1, 0, -5, -40)},
+        },
+        "script": [
+            {"stage": "types", "roles": {"B": b_types}},
+            {
+                "stage": "move",
+                "actor": "A",
+                "options": [
+                    {"id": "refrain", "kind": "concede"},
+                    {"id": "invade", "kind": "escalate"},
+                ],
+            },
+            {"stage": "accident", "base": 0.02, "per_rung": 0.05, "readiness_multiplier": 10.0},
+        ],
+        "final_outcome": "a_prevails",
+    }
+
+
+def test_a_role_acts_on_its_own_belief_about_readiness() -> None:
+    believing = crisis.build(readiness_crisis(belief=0.05))
+    informed = crisis.build(readiness_crisis(belief=None))
+    assert believing.has_beliefs and not informed.has_beliefs
+    state = _first_decision(believing, "A")
+    invade = CrisisBeliefPolicy(believing, _solve).action_probabilities(state)["invade"]
+    tree = build_tree(informed.new_initial_state())
+    plain = tabular_from_tree(tree, _solve(tree)).action_probabilities(
+        _first_decision(informed, "A")
+    )
+    assert invade > plain["invade"] + 0.2  # A underrates the risk of war, so it invades more
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda c: c["script"][0]["roles"]["B"].update(readiness_beliefs={"B": 0.5}),
+        lambda c: c["script"][0]["roles"]["B"].pop("p_high_readiness"),
+    ],
+)
+def test_readiness_belief_validation(mutate: Callable[[dict[str, Any]], object]) -> None:
+    config = readiness_crisis(belief=0.05)
+    mutate(config)
+    with pytest.raises(ConfigError):
+        crisis.build(config)

@@ -1026,6 +1026,12 @@ class AttritionState(LoggedState):
             # commitment: effort over the war relative to full effort for max_rounds
             metrics[f"commit:{sponsor.id}"] = min(1.0, self.effort[sponsor.id] / p.max_rounds)
             metrics[f"effort:{sponsor.id}"] = self.effort[sponsor.id] / max(1, self.round + 1)
+        for side in ("a", "b"):  # each sponsor's share of its side's effort (even if none)
+            members = [s.id for s in p.sponsors if s.side == side]
+            total = sum(self.effort[m] for m in members)
+            for member in members:
+                share = self.effort[member] / total if total > 0 else 1.0 / len(members)
+                metrics[f"side_share:{member}"] = share
         if p.extended:
             metrics["peak"] = self.peak
             metrics["trough"] = self.trough

@@ -354,6 +354,24 @@ def test_attrition_partition_withdrawal_and_heuristic() -> None:
     assert labels <= set(attrition.OUTCOMES)
 
 
+def test_attrition_reports_each_sponsors_share_of_its_sides_effort() -> None:
+    game = attrition.build(configs.attrition_config())
+    rng = np.random.default_rng(5)
+    for _ in range(20):
+        state = game.new_initial_state()
+        while not state.is_terminal():
+            if state.current_player() == CHANCE:
+                state.apply_action(sample_action(dict(state.chance_outcomes()), rng))
+            else:
+                state.apply_action(str(rng.choice(state.legal_actions())))
+        metrics = state.outcome().metrics
+        assert metrics["side_share:a1"] == pytest.approx(1.0)  # alone on its side
+        assert metrics["side_share:b1"] + metrics["side_share:b2"] == pytest.approx(1.0)
+        effort = {r: metrics[f"effort:{r}"] for r in ("b1", "b2")}
+        if sum(effort.values()) > 0:
+            assert metrics["side_share:b1"] == pytest.approx(effort["b1"] / sum(effort.values()))
+
+
 def _uphill_war(win_value: float, rounds: int = 28) -> dict[str, Any]:
     """A winnable war from a weak start: side a starts at 0.35 and needs 10 net wins."""
 

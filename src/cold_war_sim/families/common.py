@@ -108,3 +108,29 @@ def value_table(name: str, data: Any, required: Iterable[str]) -> ValueTable:
 
 def clamp(value: float, low: float, high: float) -> float:
     return min(high, max(low, value))
+
+
+Risk = tuple[float, float, float]  # prospect theory's (alpha, beta, lambda)
+
+
+def risk_attitude(name: str, data: Any) -> Risk:
+    """A role's risk attitude: ``{alpha, beta, lambda}`` (each defaults to 1, risk-neutral)."""
+
+    mapping = as_mapping(name, data)
+    reject_unknown(name, mapping, ("alpha", "beta", "lambda"))
+    alpha, beta, lam = (
+        finite(f"{name}.{key}", mapping.get(key, 1.0)) for key in ("alpha", "beta", "lambda")
+    )
+    if not (0.0 < alpha <= 1.0 and 0.0 < beta <= 1.0 and lam > 0.0):
+        raise ConfigError(f"{name}: alpha and beta must lie in (0, 1] and lambda be positive")
+    return (alpha, beta, lam)
+
+
+def prospect(x: float, risk: Risk | None) -> float:
+    """Prospect theory's value of a payoff *x* measured from the status quo (Tversky and
+    Kahneman 1992): x^alpha for gains, -lambda (-x)^beta for losses; ``None`` is linear."""
+
+    if risk is None:
+        return x
+    alpha, beta, lam = risk
+    return float(x**alpha) if x >= 0.0 else float(-lam * (-x) ** beta)

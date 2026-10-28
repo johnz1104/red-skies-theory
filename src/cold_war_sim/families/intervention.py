@@ -36,6 +36,7 @@ from ..games.protocol import (
 )
 from .common import (
     ConfigError,
+    Risk,
     ValueTable,
     as_mapping,
     clamp,
@@ -43,8 +44,10 @@ from .common import (
     identifier,
     nonnegative,
     probability,
+    prospect,
     reject_unknown,
     require,
+    risk_attitude,
     value_table,
 )
 
@@ -79,6 +82,8 @@ class InterventionParams(ImmutableParams):
     rival_values: ValueTable
     patron_costs: tuple[float, float, float]  # crackdown, intervene, back_down
     rival_costs: tuple[float, float, float]  # condemn, covert_aid, confront
+    patron_risk: Risk | None = None  # prospect theory on the total payoff (optional)
+    rival_risk: Risk | None = None
 
 
 class InterventionGame:
@@ -241,7 +246,7 @@ class InterventionState(LoggedState):
         rival = p.rival_values[self.label]
         if self.rival_action in RIVAL_ACTIONS[1:]:
             rival -= p.rival_costs[RIVAL_ACTIONS.index(self.rival_action) - 1]
-        return {p.patron: patron, p.rival: rival}
+        return {p.patron: prospect(patron, p.patron_risk), p.rival: prospect(rival, p.rival_risk)}
 
     def outcome(self) -> Outcome:
         if self.label is None:
@@ -287,8 +292,11 @@ def build(config: Mapping[str, Any]) -> InterventionGame:
         "clash_risk",
         "values",
         "costs",
+        "risk",
     )
     reject_unknown("intervention", config, keys)
+    risk = as_mapping("intervention.risk", config.get("risk", {}))
+    reject_unknown("intervention.risk", risk, ("patron", "rival"))
     roles = as_mapping("intervention.roles", require("intervention", config, "roles"))
     reject_unknown("intervention.roles", roles, ("patron", "rival"))
     patron = identifier("intervention.roles.patron", require("roles", roles, "patron"))
@@ -354,5 +362,7 @@ def build(config: Mapping[str, Any]) -> InterventionGame:
             nonnegative("costs.covert_aid", costs.get("covert_aid", 0.0)),
             nonnegative("costs.confront", costs.get("confront", 0.0)),
         ),
+        patron_risk=risk_attitude("risk.patron", risk["patron"]) if "patron" in risk else None,
+        rival_risk=risk_attitude("risk.rival", risk["rival"]) if "rival" in risk else None,
     )
     return InterventionGame(params)

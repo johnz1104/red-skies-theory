@@ -16,16 +16,33 @@ side. The interaction is a *stage script* assembled from a small library:
               pays unless it backs down, and may scale accident risk.
 ``accident``  chance of inadvertent war, rising with the escalation rung and
               with high readiness; a share of wars is nuclear.
+``incident``  delegated risk: chance draws an incident (rising with the rung and
+              readiness) and an officer's private temperament; the officer, a role
+              of its own, chooses to ``restrain`` (at a hold cost: its belief that
+              war has begun, times its duty, rising with the rung) or to ``fire`` (at
+              a fire cost: its belief that the alarm is false, times what a false
+              shot or report costs it).
+              Firing ends the crisis in a war, or puts a leader to ``launch`` or
+              ``wait`` (an early warning). A side's ``control`` orders (an option's
+              ``control`` share on a move) lift that share of its officers' hold cost.
+              With ``needs_readiness``, an incident can happen only when some role's
+              readiness is high (weapons that are there to be fired). A leader's
+              ``launch`` of a limited war turns nuclear with ``launch_nuclear``'s chance
+              when some role's readiness is high (weapons on the spot to answer it).
 
 Outcome labels: ``a_prevails``, ``b_prevails``, ``compromise``,
 ``limited_war``, ``nuclear_war``. Each role values each label; payoffs also
 subtract own escalation, signal, audience and pressure costs, and the costs an
 option lists for named roles (``costs: {role: x}`` on a move, signal or partner
-option, charged when it is taken; negative for a gain).
+option, charged when it is taken; negative for a gain). A role with a ``risk``
+attitude (``{alpha, beta, lambda}``) values its total payoff, measured from the
+status quo, by prospect theory's value function (losses loom larger; a role facing
+only losses gambles).
 
 **Own beliefs.** A type draw may list roles that hold their own prior about it
-(``resolve_beliefs``, ``stakes_beliefs``), which may differ from nature's: a
-leader's mistaken view of another's resolve or stakes. :meth:`CrisisGame.view`
+(``resolve_beliefs``, ``readiness_beliefs``, ``stakes_beliefs``), which may differ from
+nature's: a leader's mistaken view of another's resolve, readiness or stakes.
+:meth:`CrisisGame.view`
 gives the game as one role sees it, and :class:`~.crisis_beliefs.CrisisBeliefPolicy`
 lets each role play its part of the solution of its own view. A level that
 nature never draws (weight 0) can still be believed.
@@ -48,6 +65,7 @@ from ..games.protocol import (
 )
 from .common import (
     ConfigError,
+    Risk,
     ValueTable,
     as_list,
     as_mapping,
@@ -57,8 +75,10 @@ from .common import (
     nonnegative,
     positive_int,
     probability,
+    prospect,
     reject_unknown,
     require,
+    risk_attitude,
     value_table,
 )
 
@@ -78,13 +98,42 @@ class CrisisRole(ImmutableParams):
     escalation_cost: float = 0.0
     audience_cost: float = 0.0
     high_resolve_war_factor: float = 1.0
+    risk: Risk | None = None  # prospect theory's (alpha, beta, lambda) on the total payoff
+
+
+@dataclass(frozen=True, slots=True)
+class Incident(ImmutableParams):
+    """An incident stage: who decides, how likely it is, and what firing leads to."""
+
+    officer: str
+    command: str  # the side whose control orders bind the officer
+    base: float
+    per_rung: float
+    cap: float
+    readiness: float
+    temperaments: tuple[tuple[str, float, float, float], ...]  # (name, weight, hold, fire cost)
+    hold_per_rung: float
+    fire: str  # an outcome label, or "leader"
+    leader: str = ""
+    launch: str = "nuclear_war"
+    wait: str = "continue"  # an outcome label, or "continue"
+    leader_hold_cost: float = 0.0
+    needs_readiness: bool = False
+    launch_nuclear: float = 0.0
+
+    def hold_cost(self, temperament: str) -> float:
+        return next(hold for name, _, hold, _ in self.temperaments if name == temperament)
+
+    def fire_cost(self, temperament: str) -> float:
+        return next(fire for name, _, _, fire in self.temperaments if name == temperament)
 
 
 @dataclass(frozen=True, slots=True)
 class Step(ImmutableParams):
     """One atomic step of an expanded stage script."""
 
-    kind: str  # type | intel | signal | move | respond | partner | accident
+    kind: str  # type | intel | signal | move | respond | partner | accident | incident | alarm
+    # | escalation
     actor: str = ""
     dimension: str = ""
     probability: float = 0.0
@@ -95,6 +144,7 @@ class Step(ImmutableParams):
     beliefs: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()  # role -> its prior
     offsets: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()  # level -> (label, x)
     option_costs: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()  # id -> (role, x)
+    incident: Incident | None = None  # an incident draw, or the alarm it raises
 
     def draws(self) -> tuple[tuple[str, float], ...]:
         """A type draw's outcomes with nature's probabilities."""
@@ -197,6 +247,9 @@ class CrisisState(LoggedState):
         self.pressure: list[tuple[str, float]] = []
         self.action_cost: dict[str, float] = {}
         self.risk_multiplier = 1.0
+        self.control: dict[str, float] = {"a": 0.0, "b": 0.0, "neutral": 0.0}
+        self.alarm: str | None = None  # "officer" or "leader" while an incident is pending
+        self.temperament: dict[str, str] = {}
         self.label: str | None = None
         self.conceded_side: str | None = None
         self.tags: list[str] = []
@@ -213,7 +266,7 @@ class CrisisState(LoggedState):
         if self.label is not None:
             return TERMINAL
         step = self._step()
-        if step.kind in ("type", "intel", "accident"):
+        if step.kind in ("type", "intel", "accident", "incident", "escalation"):
             return CHANCE
         return step.actor
 
@@ -228,7 +281,18 @@ class CrisisState(LoggedState):
             return tuple(option[0] for option in step.options)
         if step.kind == "respond":
             return ("accept", "reject")
+        if step.kind == "alarm":
+            return ("restrain", "fire") if self.alarm == "officer" else ("wait", "launch")
         return ()
+
+    def _incident_probability(self, incident: Incident) -> float:
+        p = min(incident.cap, incident.base + incident.per_rung * self.rung)
+        ready = any(t.get("readiness") == "high" for t in self.types.values())
+        if incident.needs_readiness and not ready:
+            return 0.0
+        if ready:
+            p *= incident.readiness
+        return clamp(p * self.risk_multiplier, 0.0, 1.0)
 
     def _accident_probabilities(self, step: Step) -> tuple[float, float]:
         base, per_rung, cap, nuclear_base, nuclear_per_rung, readiness = step.accident
@@ -246,6 +310,17 @@ class CrisisState(LoggedState):
             about = self.types[step.actor].get(step.dimension)
             p_alarm = step.probability if about == "high" else 1.0 - step.probability
             return (("alarming", p_alarm), ("reassuring", 1.0 - p_alarm))
+        if step.kind == "escalation":
+            assert step.incident is not None
+            x = step.incident.launch_nuclear
+            return (("limited_war", 1.0 - x), ("nuclear_war", x))
+        if step.kind == "incident":
+            assert step.incident is not None
+            p = self._incident_probability(step.incident)
+            return (
+                ("calm", 1.0 - p),
+                *((f"incident:{name}", p * w) for name, w, _, _ in step.incident.temperaments),
+            )
         p_war, p_nuclear = self._accident_probabilities(step)
         return (
             ("calm", 1.0 - p_war),
@@ -283,6 +358,20 @@ class CrisisState(LoggedState):
             visible = PUBLIC if step.observers is None else step.observers
             self.log(f"intel:{step.actor}={action}", visible_to=visible)
             self.tags.append(f"intel:{step.actor}={action}")
+        elif step.kind == "escalation":
+            self.log(f"escalation={action}")
+            self.label, self.alarm = action, None
+        elif step.kind == "incident":
+            assert step.incident is not None
+            if action == "calm":
+                self.log("incident=calm")
+            else:
+                officer = step.incident.officer
+                self.temperament[officer] = action.partition(":")[2]
+                self.alarm = "officer"
+                self.log("incident")
+                self.log(f"temperament={self.temperament[officer]}", visible_to=[officer])
+                self.tags.append(f"incident:{officer}")
         else:
             self.log(f"accident={action}")
             if action != "calm":
@@ -296,7 +385,9 @@ class CrisisState(LoggedState):
         for role, cost in dict(step.option_costs).get(action, ()):
             self.action_cost[role] = self.action_cost.get(role, 0.0) + cost
         side = self._side(actor)
-        if step.kind == "signal":
+        if step.kind == "alarm":
+            self._alarm(step, action)
+        elif step.kind == "signal":
             stance = option[1]
             if stance in ("hard", "soft"):
                 self.stance[actor] = stance
@@ -319,6 +410,8 @@ class CrisisState(LoggedState):
                 self.deal_by = side
             elif kind == "fight":
                 self.label = "limited_war"
+            if option[3] > 0.0:  # a control order binds the side's officers
+                self.control[side] = max(self.control[side], option[3])
             self.tags.append(f"{actor}:move={action}")
         elif step.kind == "respond":
             if action == "accept":
@@ -333,7 +426,55 @@ class CrisisState(LoggedState):
             self.risk_multiplier *= option[3]
             self.tags.append(f"{actor}:partner={action}")
 
+    def _alarm(self, step: Step, action: str) -> None:
+        incident = step.incident
+        assert incident is not None
+        actor = step.actor
+        if self.alarm == "officer":
+            if action == "restrain":
+                hold = (
+                    incident.hold_cost(self.temperament[actor]) + incident.hold_per_rung * self.rung
+                )
+                held = hold * (1.0 - self.control[incident.command])
+                self.action_cost[actor] = self.action_cost.get(actor, 0.0) + held
+                self.alarm = None
+            else:
+                fired = incident.fire_cost(self.temperament[actor])
+                self.action_cost[actor] = self.action_cost.get(actor, 0.0) + fired
+                if incident.fire == "leader":
+                    self.alarm = "leader"
+                else:
+                    self.label, self.alarm = incident.fire, None
+        else:
+            ready = any(t.get("readiness") == "high" for t in self.types.values())
+            if action == "launch" and (
+                incident.launch == "limited_war" and incident.launch_nuclear > 0.0 and ready
+            ):
+                self.alarm = "escalation"  # the answer may turn nuclear
+                self.tags.append(f"{actor}:alarm={action}")
+                return
+            if action == "launch":
+                self.label = incident.launch
+            else:
+                self.action_cost[actor] = (
+                    self.action_cost.get(actor, 0.0) + incident.leader_hold_cost
+                )
+                if incident.wait != "continue":
+                    self.label = incident.wait
+            self.alarm = None
+        self.tags.append(f"{actor}:alarm={action}")
+
     def _applicable(self, step: Step) -> bool:
+        if step.kind == "escalation":
+            return self.alarm == "escalation"
+        if step.kind == "alarm":
+            assert step.incident is not None
+            if self.alarm == "officer":
+                return step.actor == step.incident.officer
+            return self.alarm == "leader" and step.actor == step.incident.leader
+        if step.kind == "incident":
+            assert step.incident is not None
+            return self._incident_probability(step.incident) > 0.0
         if step.kind == "respond":
             return self.deal_by is not None and self.deal_by != self._side(step.actor)
         if step.kind == "accident":
@@ -376,7 +517,7 @@ class CrisisState(LoggedState):
             for target_side, cost in self.pressure:
                 if role.side == target_side and self.conceded_side != target_side:
                     value -= cost
-            result[role.id] = value
+            result[role.id] = prospect(value, role.risk)
         return result
 
     def outcome(self) -> Outcome:
@@ -425,7 +566,7 @@ def _parse_role(role_id: str, data: Any) -> CrisisRole:
     reject_unknown(
         name,
         mapping,
-        ("side", "values", "escalation_cost", "audience_cost", "high_resolve_war_factor"),
+        ("side", "values", "escalation_cost", "audience_cost", "high_resolve_war_factor", "risk"),
     )
     side = require(name, mapping, "side")
     if side not in SIDES:
@@ -439,6 +580,7 @@ def _parse_role(role_id: str, data: Any) -> CrisisRole:
         high_resolve_war_factor=nonnegative(
             f"{name}.high_resolve_war_factor", mapping.get("high_resolve_war_factor", 1.0)
         ),
+        risk=risk_attitude(f"{name}.risk", mapping["risk"]) if "risk" in mapping else None,
     )
 
 
@@ -467,12 +609,13 @@ def _parse_options(
                 )
             )
         if key == "kind":
-            reject_unknown(f"{name}[{i}]", item, ("id", "kind", "rungs"))
+            reject_unknown(f"{name}[{i}]", item, ("id", "kind", "rungs", "control"))
             kind = require(name, item, "kind")
             if kind not in kinds:
                 raise ConfigError(f"{name}[{i}].kind must be one of {kinds}")
             rungs = positive_int(f"{name}[{i}].rungs", item.get("rungs", 1))
-            options.append((option_id, kind, float(rungs), 0.0))
+            control = probability(f"{name}[{i}].control", item.get("control", 0.0))
+            options.append((option_id, kind, float(rungs), control))
         elif key == "stance":
             reject_unknown(f"{name}[{i}]", item, ("id", "stance", "cost"))
             stance = item.get("stance", "keep")
@@ -585,6 +728,7 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
                     "p_high_resolve",
                     "p_high_readiness",
                     "resolve_beliefs",
+                    "readiness_beliefs",
                     "stakes",
                     "stakes_beliefs",
                 ),
@@ -610,14 +754,26 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
             elif "resolve_beliefs" in dims_map:
                 raise ConfigError(f"{where}.resolve_beliefs needs p_high_resolve")
             if "p_high_readiness" in dims_map:
+                readiness_beliefs = _beliefs(
+                    f"{where}.readiness_beliefs",
+                    dims_map.get("readiness_beliefs", {}),
+                    role_id,
+                    role_ids,
+                )
                 steps.append(
                     Step(
                         "type",
                         role_id,
                         "readiness",
                         probability(f"{name}.p_high_readiness", dims_map["p_high_readiness"]),
+                        beliefs=tuple(
+                            (holder, (("high", p), ("low", 1.0 - p)))
+                            for holder, p in readiness_beliefs
+                        ),
                     )
                 )
+            elif "readiness_beliefs" in dims_map:
+                raise ConfigError(f"{where}.readiness_beliefs needs p_high_readiness")
             if "stakes" in dims_map:
                 steps.append(_stakes_step(where, dims_map, role_id, role_ids))
             elif "stakes_beliefs" in dims_map:
@@ -714,7 +870,98 @@ def _expand_stage(index: int, data: Any, role_ids: set[str]) -> list[Step]:
             nonnegative(f"{name}.readiness_multiplier", stage.get("readiness_multiplier", 1.0)),
         )
         return [Step("accident", accident=values)]
+    if kind == "incident":
+        return _incident_steps(name, stage, role_ids)
     raise ConfigError(f"{name}.stage {kind!r} is not a crisis stage")
+
+
+def _incident_steps(name: str, stage: Mapping[str, Any], role_ids: set[str]) -> list[Step]:
+    reject_unknown(
+        name,
+        stage,
+        (
+            "stage",
+            "officer",
+            "command",
+            "base",
+            "per_rung",
+            "cap",
+            "readiness_multiplier",
+            "temperaments",
+            "hold_per_rung",
+            "fire",
+            "needs_readiness",
+        ),
+    )
+    officer = require(name, stage, "officer")
+    if officer not in role_ids:
+        raise ConfigError(f"{name}.officer refers to unknown role {officer!r}")
+    command = stage.get("command", "neutral")
+    if command not in SIDES:
+        raise ConfigError(f"{name}.command must be one of {SIDES}")
+    raw = as_mapping(f"{name}.temperaments", stage.get("temperaments", {"steady": {}}))
+    if not raw:
+        raise ConfigError(f"{name}.temperaments needs at least one level")
+    weights, costs = {}, {}
+    for level, spec in raw.items():
+        item = as_mapping(f"{name}.temperaments.{level}", spec)
+        where = f"{name}.temperaments.{level}"
+        reject_unknown(where, item, ("weight", "hold_cost", "fire_cost"))
+        weights[identifier(f"{name}.temperaments", level)] = item.get("weight", 1.0)
+        costs[level] = (
+            nonnegative(f"{where}.hold_cost", item.get("hold_cost", 0.0)),
+            nonnegative(f"{where}.fire_cost", item.get("fire_cost", 0.0)),
+        )
+    nature = _distribution(f"{name}.temperaments (weights)", weights, tuple(weights))
+    fire_raw = require(name, stage, "fire")
+    leader, launch, wait, leader_hold, launch_nuclear = "", "nuclear_war", "continue", 0.0, 0.0
+    if isinstance(fire_raw, str):
+        if fire_raw not in OUTCOMES:
+            raise ConfigError(f"{name}.fire must be an outcome label or a leader's alarm")
+        fire = fire_raw
+    else:
+        spec = as_mapping(f"{name}.fire", fire_raw)
+        reject_unknown(
+            f"{name}.fire", spec, ("leader", "launch", "wait", "hold_cost", "launch_nuclear")
+        )
+        leader = require(f"{name}.fire", spec, "leader")
+        if leader not in role_ids or leader == officer:
+            raise ConfigError(f"{name}.fire.leader must be a known role other than the officer")
+        launch = spec.get("launch", "nuclear_war")
+        wait = spec.get("wait", "continue")
+        if launch not in OUTCOMES or (wait != "continue" and wait not in OUTCOMES):
+            raise ConfigError(f"{name}.fire: launch and wait must be outcome labels (or continue)")
+        leader_hold = nonnegative(f"{name}.fire.hold_cost", spec.get("hold_cost", 0.0))
+        launch_nuclear = probability(f"{name}.fire.launch_nuclear", spec.get("launch_nuclear", 0.0))
+        fire = "leader"
+    incident = Incident(
+        officer=str(officer),
+        command=str(command),
+        base=probability(f"{name}.base", stage.get("base", 0.0)),
+        per_rung=nonnegative(f"{name}.per_rung", stage.get("per_rung", 0.0)),
+        cap=probability(f"{name}.cap", stage.get("cap", 1.0)),
+        readiness=nonnegative(
+            f"{name}.readiness_multiplier", stage.get("readiness_multiplier", 1.0)
+        ),
+        temperaments=tuple((level, w, *costs[level]) for level, w in nature),
+        hold_per_rung=nonnegative(f"{name}.hold_per_rung", stage.get("hold_per_rung", 0.0)),
+        fire=fire,
+        leader=str(leader),
+        launch=str(launch),
+        wait=str(wait),
+        leader_hold_cost=leader_hold,
+        needs_readiness=bool(stage.get("needs_readiness", False)),
+        launch_nuclear=launch_nuclear,
+    )
+    steps = [
+        Step("incident", officer, incident=incident),
+        Step("alarm", officer, incident=incident),
+    ]
+    if leader:
+        steps.append(Step("alarm", str(leader), incident=incident))
+        if launch_nuclear > 0.0:
+            steps.append(Step("escalation", str(leader), incident=incident))
+    return steps
 
 
 def build(config: Mapping[str, Any]) -> CrisisGame:
