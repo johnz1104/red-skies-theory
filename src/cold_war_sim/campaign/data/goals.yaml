@@ -1,0 +1,170 @@
+# Goal functions: what each learning identity is trying to achieve.
+# Design and sources: docs/GOALS.md (decisions of 2026-10-10).
+#
+# A goal score is a weighted sum of components (GOALS.md section 4):
+#   security, influence (net of rivals), economy, regime, empire, autonomy,
+#   credibility.
+# The reward each quarter is the current weights times the change in the
+# components, so a weight switch (new leader) never creates a reward jump.
+#
+# Weight rows are tried in order and the first whose `when` holds is used; the
+# last row of each identity has no `when` and is the default. Conditions use the
+# event-catalog condition language, but only leaders, dates, flags and regimes
+# (no event ids), so test catalogs with other events still load.
+#
+# PLACEHOLDER marks a value to be chosen later with the sensitivity sweep.
+
+kappa: 100.0  # PLACEHOLDER: score units -> sub-game payoff units (derived payoffs)
+
+# Risk attitudes (E48; QUESTIONS Q36): leaders value an event's outcomes by prospect theory's
+# value function on the derived goal change from the status quo: x^alpha for gains,
+# -lambda (-x)^beta for losses (Tversky and Kahneman, J. Risk and Uncertainty 5, 1992). Losses
+# loom larger, and where every option loses a leader gambles (gambling for resurrection: Downs
+# and Rocke, Am. J. Pol. Sci. 38, 1994; prospect theory in IR: Levy, Int. Studies Q. 41,
+# 1997; McDermott, Risk-Taking in International Politics, 1998). Applied to the outcome
+# values of crises and interventions (costs and the continuous shares of wars and talks
+# stay risk-neutral); the campaign's goal reward stays risk-neutral. `leaders:` overrides
+# per leader only where documented; alpha = beta = lambda = 1 is risk-neutral.
+risk: {alpha: 0.88, beta: 0.88, lambda: 2.25}
+
+# Derived payoffs count follow-on events (GOALS.md section 7, decided 2026-10-11): cutscenes an
+# outcome makes more (or less) likely, each weighted by its discounted chance of firing within
+# `quarters` after the event could end (its maximum duration, capped at `quarters`), and by the
+# goal value of its effects. Delayed payoffs, such as an investment that may not pay off, count.
+# 16 quarters = the planners' own horizon: the Marshall Plan's four-year programme (1948-52) and
+# the Soviet five-year plans (user decision 2026-10-11). The discount is a placeholder.
+lookahead: {quarters: 16, discount: 0.97}
+
+components:
+  economy:
+    scale: 4.0  # component = ln(GDP / GDP in 1945) / ln(scale): 1.0 after quadrupling
+  regime:
+    # A regime governing only part of its country (user decision 2026-10-14; EXPERIMENTS.md
+    # E40): while the condition holds (an insurgency, or ruling one side of a partitioned
+    # China), the regime component is stability times the power's influence share of the
+    # region. Otherwise the Communists were credited with all of China's stability before
+    # ruling it, so losing cost their whole score and winning added little
+    partial:
+      PRC:
+        region: china_mainland
+        when: {any: [{status: {power: PRC, in: [insurgent]}}, {flag: china_divided}]}
+  security:
+    # Military strength = conventional + nuclear term. "linear" reproduces
+    # dynamics.military_strength. "weibull" (max * (1 - exp(-(n / n_star)^k)))
+    # is the saturating curve of GOALS.md section 4; it stays off until data
+    # grounding sets n_star per target.
+    nuclear: {model: linear, weight: 0.6}
+    # nuclear: {model: weibull, max: 6.0, n_star: 10.0, k: 2.0}  # PLACEHOLDER values
+    # Buffers (GOALS.md section 16, decided 2026-10-11): a power's approaches absorb threats,
+    # so holding them counts as security too. Security += weight x the importance-weighted
+    # net hold of the buffer regions: own influence + allies' (band-weighted) - rivals'
+    # (threat-weighted, not scaled by rivalry: a rival on your approaches is a direct threat).
+    # Holding every buffer region outright adds `weight` to security, as much as moving the
+    # military balance from 0.50 to 0.75.
+    buffer:
+      weight: 0.25  # PLACEHOLDER, swept
+      regions:
+        # the glacis (two German invasions through Poland); Korea borders the Soviet Far East
+        # near Vladivostok, and its ports mattered once Port Arthur's return to China was
+        # agreed in 1950 (Goncharov, Lewis and Xue 1993; user decision 2026-10-12)
+        USSR: [eastern_europe, germany, korea]
+        USA: [latin_america, caribbean]  # the Monroe Doctrine
+        PRC: [korea, indochina]          # "lips and teeth" (Korea 1950); the southern border
+        FRA: [germany]                   # security against Germany (Rhineland, Saar, Ruhr)
+  influence:
+    # Region weight = importance x multiplier (default 1). Core regions x2.
+    interest:
+      # middle_east x2: Western Europe's oil passed through it, and the Eisenhower Doctrine
+      # (1957) made it a declared US interest (user decision 2026-10-14, E41)
+      USA: {western_europe: 2, germany: 2, japan: 2, latin_america: 2, caribbean: 2, persian_gulf: 2, middle_east: 2}
+      USSR: {eastern_europe: 2, germany: 2, china_mainland: 2, afghanistan: 2}
+      PRC: {china_mainland: 3, taiwan: 2, korea: 2, indochina: 2}
+      ROC: {china_mainland: 3, taiwan: 2, korea: 2, indochina: 2}
+      UK: {western_europe: 2, mediterranean: 2, middle_east: 2, persian_gulf: 2, south_asia: 2, southeast_asia: 2}
+      FRA: {western_europe: 2, germany: 2, north_africa: 2, indochina: 2, central_africa: 2}
+    # Rivalry intensity: how much a rival's influence counts against your own.
+    rivalry: {USA: 1.0, USSR: 1.0, PRC: 0.7, ROC: 0.7, UK: 0.5, FRA: 0.4}
+  allies:
+    # Allies within a band (GOALS.md section 14). A friendly power q (relation r > 0)
+    # with strength ratio x = M_q / M_p is worth
+    #   v(x) = height * [s((x - floor)/tf) - (1 + cost) * s((x - ceiling)/tc)]
+    # (s logistic; tf, tc = smoothness * floor, ceiling): about 0 below the floor,
+    # `height` in the band, -cost * height past the ceiling. Allies keep their small
+    # threat weight (1 - r)/2, and the band adds r * v on top, so nothing jumps at r = 0.
+    height: 0.5      # PLACEHOLDER
+    cost: 0.5        # PLACEHOLDER: value past the ceiling is -cost * height
+    smoothness: 0.2  # PLACEHOLDER: edge width relative to the floor or ceiling
+    # No default ceiling: an unlisted ally is welcome however strong it is. A ceiling
+    # is a claim about one relationship (an ally that could grow into a rival) and is
+    # set only where argued: Stalin-Mao, US-China, US-Britain/France, Mao-USSR.
+    # De Gaulle's resentment of US dominance is carried by autonomy, not by a band.
+    # (Until 2026-10-11 the default had ceiling 1.0, which made France treat the US
+    # and Britain as liabilities in 1948; EXPERIMENTS.md E20.)
+    default: {floor: 0.1, ceiling: null}
+    bands:  # viewer identity -> other seat -> band; ceiling null = no ceiling
+      USSR: {PRC: {floor: 0.1, ceiling: 0.4}}
+      USA: {UK: {floor: 0.05, ceiling: 0.8}, FRA: {floor: 0.05, ceiling: 0.8}, PRC: {floor: 0.1, ceiling: 0.5}}
+      UK: {USA: {floor: 0.05, ceiling: null}}
+      ROC: {USA: {floor: 0.05, ceiling: null}}
+      PRC: {USSR: {floor: 0.1, ceiling: 3.0}}
+  autonomy:
+    # Autonomy = 1/2 [own tested bomb: tech_nuclear >= 1] + 1/2 [not subordinate].
+    subordinate:
+      FRA: {all: [{flag: nato}, {no_flag: france_out_of_nato_command}]}
+      PRC: {flag: sino_soviet_alliance}
+
+weights:
+  USA:
+    - label: Reagan
+      when: {leader: {power: USA, in: [reagan]}}
+      weights: {security: 0.20, influence: 0.45, economy: 0.15, regime: 0.05, credibility: 0.15}
+    - label: symmetrical containment (Truman, Kennedy, Johnson)
+      when: {leader: {power: USA, in: [truman, kennedy, johnson]}}
+      weights: {security: 0.20, influence: 0.40, economy: 0.15, regime: 0.10, credibility: 0.15}
+    - label: asymmetrical containment (Eisenhower, Nixon, Ford, Carter, Bush)
+      weights: {security: 0.20, influence: 0.35, economy: 0.25, regime: 0.10, credibility: 0.10}
+  USSR:
+    - label: Stalin
+      when: {leader: {power: USSR, in: [stalin]}}
+      weights: {security: 0.35, influence: 0.30, economy: 0.10, regime: 0.20, credibility: 0.05}
+    - label: Khrushchev (and Malenkov)
+      when: {leader: {power: USSR, in: [malenkov, khrushchev]}}
+      weights: {security: 0.20, influence: 0.45, economy: 0.15, regime: 0.15, credibility: 0.05}
+    - label: Gorbachev
+      when: {leader: {power: USSR, in: [gorbachev]}}
+      weights: {security: 0.15, influence: 0.20, economy: 0.35, regime: 0.25, credibility: 0.05}
+    - label: Brezhnev to Chernenko (and a hardline successor)
+      weights: {security: 0.30, influence: 0.35, economy: 0.10, regime: 0.20, credibility: 0.05}
+  UK:
+    - label: after the East of Suez withdrawal (1968)
+      when: {after: 1968-Q1}
+      weights: {security: 0.20, influence: 0.30, economy: 0.35, regime: 0.10, credibility: 0.05}
+    - label: Suez to 1968 (Macmillan, Douglas-Home, Wilson)
+      when: {leader: {power: UK, in: [macmillan, douglas_home, wilson]}}
+      weights: {security: 0.20, influence: 0.30, economy: 0.30, regime: 0.10, empire: 0.05, credibility: 0.05}
+    - label: before Suez (Attlee, Churchill, Eden)
+      weights: {security: 0.15, influence: 0.30, economy: 0.25, regime: 0.10, empire: 0.15, credibility: 0.05}
+  FRA:
+    - label: de Gaulle and the Gaullist consensus
+      when: {leader: {power: FRA, in: [de_gaulle, pompidou, giscard, mitterrand]}}
+      weights: {security: 0.15, influence: 0.25, economy: 0.20, regime: 0.10, autonomy: 0.25, empire: 0.05}
+    - label: Fourth Republic
+      weights: {security: 0.20, influence: 0.20, economy: 0.25, regime: 0.15, empire: 0.20}
+  PRC:
+    - label: Deng
+      when: {leader: {power: PRC, in: [deng]}}
+      weights: {security: 0.20, influence: 0.15, economy: 0.40, regime: 0.25}
+    - label: Mao (and Hua)
+      # credibility 0.05 (from regime) so face counts: backing down from a pledge or a
+      # warning (Korea 1950-53, the Taiwan Strait) costs China reputation, which lasts
+      # (user decision 2026-10-12; EXPERIMENTS.md E33)
+      weights: {security: 0.30, influence: 0.30, economy: 0.05, regime: 0.25, autonomy: 0.05, credibility: 0.05}
+  ROC:
+    - label: Nationalists
+      weights: {security: 0.25, influence: 0.20, economy: 0.10, regime: 0.45}
+
+standing:
+  # The standing scoreboard (GOALS.md section 8): an Elo-style rating per identity,
+  # updated by contests and space-race firsts. It never enters any reward.
+  k: 32.0  # PLACEHOLDER: rating points at stake for full commitment
+  start: 1500.0

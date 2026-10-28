@@ -1,0 +1,15 @@
+# Opening situation at 1945-Q3 (after Potsdam and the Japanese surrender).
+tension: 0.3
+flags:
+  - us_nuclear_monopoly
+  - germany_occupied
+  - berlin_four_power
+  - korea_divided
+  - us_troops_korea  # US occupation of the south (from September 1945)
+  - soviet_troops_korea  # Soviet occupation of the north (from August 1945)
+  - soviet_troops_in_iran
+  - french_return_to_indochina
+  - greece_unstable
+  - french_algeria
+  - british_empire
+  - uk_colonial_southeast_asia

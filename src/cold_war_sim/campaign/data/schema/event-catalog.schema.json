@@ -1,0 +1,471 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cold-war-sim.invalid/schema/event-catalog.schema.json",
+  "title": "Cold War campaign event file",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "era",
+    "title",
+    "events"
+  ],
+  "properties": {
+    "era": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "$defs": {
+    "quarter": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-Q[1-4]$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 1
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "effects": {
+          "$ref": "#/$defs/effects"
+        },
+        "narrative": {
+          "type": "string"
+        },
+        "additions": {
+          "$ref": "#/$defs/effects"
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base": {
+          "type": "number"
+        },
+        "terms": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "clamp": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "config"
+      ],
+      "properties": {
+        "family": {
+          "enum": [
+            "crisis",
+            "bargaining",
+            "intervention",
+            "attrition",
+            "alignment"
+          ]
+        },
+        "cadence": {
+          "enum": [
+            "instant",
+            "quarterly",
+            "annual"
+          ]
+        },
+        "tier": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "payoffs": {
+          "enum": [
+            "hand",
+            "derived"
+          ]
+        },
+        "holdout": {
+          "type": "boolean"
+        },
+        "identities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "identity",
+              "stalemate_share"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "identity": {
+                "type": "string"
+              },
+              "stalemate_share": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        },
+        "results": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "region": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/binding"
+          }
+        },
+        "historical": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "choices": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "chance": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "instances": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "before": {
+                    "$ref": "#/$defs/quarter"
+                  },
+                  "choices": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "chance": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "optional_roles": {
+          "type": "object"
+        },
+        "effort_costs": {
+          "enum": [
+            "hand",
+            "derived"
+          ]
+        },
+        "effects": {
+          "enum": [
+            "contract"
+          ],
+          "description": "outcome effects from the shared effects contract (data/contract.yaml); outcomes then list only additions"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "major",
+            "cutscene",
+            "leadership",
+            "decision"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "earliest": {
+              "$ref": "#/$defs/quarter"
+            },
+            "latest": {
+              "$ref": "#/$defs/quarter"
+            }
+          }
+        },
+        "when": {},
+        "hazard": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "once": {
+          "type": "boolean"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "race": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "winner",
+            "loser"
+          ],
+          "properties": {
+            "winner": {
+              "type": "string"
+            },
+            "loser": {
+              "type": "string"
+            }
+          }
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "historical_date": {
+          "$ref": "#/$defs/quarter"
+        },
+        "narrative": {
+          "type": "string"
+        },
+        "provenance": {
+          "type": "string"
+        },
+        "effects": {
+          "$ref": "#/$defs/effects"
+        },
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/outcome"
+          }
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/outcome"
+          }
+        },
+        "decision": {
+          "$ref": "#/$defs/decision"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "major"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "model",
+              "outcomes"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "effects"
+                  ]
+                },
+                {
+                  "required": [
+                    "decision"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "decision"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "decision",
+              "outcomes"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "effects"
+                  ]
+                },
+                {
+                  "required": [
+                    "model"
+                  ]
+                },
+                {
+                  "required": [
+                    "tags"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cutscene",
+                  "leadership"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "model"
+                  ]
+                },
+                {
+                  "required": [
+                    "outcomes"
+                  ]
+                },
+                {
+                  "required": [
+                    "tags"
+                  ]
+                },
+                {
+                  "required": [
+                    "decision"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "power"
+      ],
+      "properties": {
+        "power": {
+          "type": "string"
+        },
+        "tier": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "historical": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

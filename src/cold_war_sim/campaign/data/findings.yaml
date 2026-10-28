@@ -1,0 +1,98 @@
+# Findings: measurable claims from the experiment log, which `assumptions robust` tests
+# across the assumptions register's ranges (user decision 7, 2026-10-14). In each draw a
+# finding's rate (or mean) over the draw's campaigns is compared with its claim; a finding
+# holding in at least 90% of draws is robust, otherwise fragile. Seeded 2026-10-17 from
+# the log, for the user to edit.
+#
+# Metrics, over campaigns:
+#   {outcome: EVENT, label: GLOB or [GLOBS] ("!x" excludes)}  share ending with that label
+#   {tag: EVENT, has: GLOB}                                    share with a matching tag
+#   {fired: EVENT}                                             share in which it fired
+#   {ended: REASON}                                            share with that end reason
+#   {return: IDENTITY}                                         mean goal return
+# `given: fired` counts only the campaigns in which the event has an outcome.
+#
+# Kinds (user, 2026-10-20): `conclusion` (the default) is what the model concludes at its
+# values, a rate whose robustness says how much it rests on judgment numbers; `possible`
+# claims only that a historical outcome stays possible (at least 0.05), since history must
+# stay possible from 1945 but is not a target (2026-10-14). A historical outcome claimed
+# as a conclusion has a `possible` twin.
+
+findings:
+  - id: civil_war_communist_victory
+    text: "The Communists win the civil war in a fifth of campaigns or more"
+    metric: {outcome: chinese_civil_war, label: a_victory}
+    claim: {at_least: 0.2}
+    source: "E40: 22 of 60 equilibrium campaigns"
+  - id: civil_war_communist_victory_possible
+    kind: possible
+    text: "A Communist victory in the civil war stays possible"
+    metric: {outcome: chinese_civil_war, label: a_victory}
+    claim: {at_least: 0.05}
+    source: "the twin of civil_war_communist_victory (user, 2026-10-20)"
+  - id: civil_war_nationalists_hold
+    text: "The Nationalists hold China (victory, or a Communist withdrawal) in a fifth of campaigns or more"
+    metric: {outcome: chinese_civil_war, label: [b_victory, a_withdrew]}
+    claim: {at_least: 0.2}
+    source: "E40: 33 of 60"
+  - id: marshall_us_aid
+    text: "The US offers Marshall aid in nine campaigns of ten"
+    metric: {tag: marshall_plan, has: "offer:USA=aid*", given: fired}
+    claim: {at_least: 0.9}
+    source: "E26: 59 of 60"
+  - id: marshall_us_aid_possible
+    kind: possible
+    text: "US Marshall aid stays possible"
+    metric: {tag: marshall_plan, has: "offer:USA=aid*", given: fired}
+    claim: {at_least: 0.05}
+    source: "the twin of marshall_us_aid (user, 2026-10-20)"
+  - id: marshall_forbid
+    text: "Stalin forbids the East to take Marshall aid in three campaigns of four"
+    metric: {tag: marshall_plan, has: "USSR:forbade", given: fired}
+    claim: {at_least: 0.75}
+    source: "E26: 54 of 60"
+  - id: marshall_forbid_possible
+    kind: possible
+    text: "Stalin's forbid stays possible"
+    metric: {tag: marshall_plan, has: "USSR:forbade", given: fired}
+    claim: {at_least: 0.05}
+    source: "the twin of marshall_forbid (user, 2026-10-20)"
+  - id: berlin_settles
+    text: "The Berlin standoff ends in an agreement"
+    metric: {outcome: berlin_blockade, label: agreement, given: fired}
+    claim: {at_least: 0.75}
+    source: "E21: the USSR concedes at once in every type pair and in all 20 campaigns checked"
+  - id: korea_war_comes
+    text: "Korea's war comes in three campaigns of four"
+    metric: {outcome: korean_war, label: "!refused"}
+    claim: {at_least: 0.75}
+    source: "E40: 57 of 60"
+  - id: korea_war_comes_possible
+    kind: possible
+    text: "Korea's war stays possible"
+    metric: {outcome: korean_war, label: "!refused"}
+    claim: {at_least: 0.05}
+    source: "the twin of korea_war_comes (user, 2026-10-20)"
+  - id: korea_armistice_possible
+    kind: possible
+    text: "A Korean armistice near the line stays possible"
+    metric: {outcome: korean_war, label: partition, given: fired}
+    claim: {at_least: 0.05}
+    source: "E40: armistice 28 of 57 wars; history must stay possible (user, 2026-10-14)"
+  - id: suez_withdrawal
+    kind: possible
+    text: "Suez's withdrawal stays possible"
+    metric: {outcome: suez_crisis, label: b_prevails, given: fired}
+    claim: {at_least: 0.05}
+    source: "E41: 0.61 at the 1956 replay world; E42: 0.43 in base campaigns, so the claim of 0.5 failed at base; restated as a plausibility claim (user, 2026-10-19; history must stay possible)"
+  - id: no_nuclear_war
+    text: "Nuclear war is rare"
+    metric: {ended: nuclear_war}
+    claim: {at_most: 0.05}
+    source: "E2, E10: none or one in 100 campaigns"
+  - id: dissolution_possible
+    kind: possible
+    text: "The Soviet Union's dissolution in 1991 stays possible"
+    metric: {ended: ussr_dissolved}
+    claim: {at_least: 0.05}
+    source: "E3: about 40% of games (2026-10-08); history must stay possible"

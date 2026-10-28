@@ -1,0 +1,721 @@
+# Era V, 1973-1984: detente, its collapse and the Second Cold War. Illustrative.
+era: 5
+title: Detente and the Second Cold War (1973-1984)
+events:
+  # ----------------------------------------------------------- leadership
+  - id: wilson_returns
+    kind: leadership
+    title: Wilson returns
+    window: {earliest: 1974-Q1, latest: 1975-Q4}
+    historical_date: 1974-Q1
+    priority: 20
+    when: {leader: {power: UK, in: [heath]}}
+    narrative: "Harold Wilson returns to Downing Street."
+    effects: [{leader: wilson}]
+
+  - id: giscard_elected
+    kind: leadership
+    title: Giscard elected
+    window: {earliest: 1974-Q2, latest: 1975-Q4}
+    historical_date: 1974-Q2
+    priority: 20
+    when: {leader: {power: FRA, in: [pompidou, de_gaulle]}}
+    narrative: "Valery Giscard d'Estaing is elected President of France."
+    effects: [{leader: giscard}]
+
+  - id: ford_succeeds
+    kind: leadership
+    title: Ford succeeds Nixon
+    window: {earliest: 1974-Q3, latest: 1976-Q4}
+    historical_date: 1974-Q3
+    priority: 20
+    when: {fired: watergate}
+    narrative: "Gerald Ford is sworn in: our long national nightmare is over."
+    effects: [{leader: ford}]
+
+  - id: callaghan_succeeds
+    kind: leadership
+    title: Callaghan succeeds Wilson
+    window: {earliest: 1976-Q2, latest: 1977-Q4}
+    historical_date: 1976-Q2
+    priority: 20
+    when: {leader: {power: UK, in: [wilson]}}
+    narrative: "James Callaghan becomes Prime Minister."
+    effects: [{leader: callaghan}]
+
+  - id: mao_dies
+    kind: leadership
+    title: Death of Mao
+    window: {earliest: 1976-Q3, latest: 1977-Q4}
+    historical_date: 1976-Q3
+    priority: 20
+    when:
+      all:
+        - leader: {power: PRC, in: [mao]}
+        - status: {power: PRC, in: [active]}
+    narrative: "Mao Zedong dies; Hua Guofeng arrests the Gang of Four."
+    effects: [{leader: hua_guofeng}, {flag: mao_dead}, {add: {path: powers.PRC.stability, value: 0.05}}]
+
+  - id: carter_inaugurated
+    kind: leadership
+    title: Carter inaugurated
+    window: {earliest: 1977-Q1, latest: 1977-Q4}
+    historical_date: 1977-Q1
+    priority: 20
+    when: {leader: {power: USA, in: [ford, nixon]}}
+    narrative: "Jimmy Carter becomes President, promising a foreign policy of human rights."
+    effects: [{leader: carter}]
+
+  - id: deng_rises
+    kind: leadership
+    title: Deng Xiaoping's reforms
+    window: {earliest: 1978-Q4, latest: 1980-Q4}
+    historical_date: 1978-Q4
+    priority: 20
+    when: {fired: mao_dies}
+    narrative: "Deng Xiaoping takes control and launches reform and opening."
+    effects: [{leader: deng}, {flag: reform_and_opening}, {add: {path: powers.PRC.growth, value: 0.05}}]
+
+  - id: thatcher_elected
+    kind: leadership
+    title: Thatcher elected
+    window: {earliest: 1979-Q2, latest: 1980-Q4}
+    historical_date: 1979-Q2
+    priority: 20
+    when: {leader: {power: UK, in: [callaghan, wilson, heath]}}
+    narrative: "Margaret Thatcher becomes Prime Minister."
+    effects: [{leader: thatcher}]
+
+  - id: reagan_inaugurated
+    kind: leadership
+    title: Reagan inaugurated
+    window: {earliest: 1981-Q1, latest: 1981-Q4}
+    historical_date: 1981-Q1
+    priority: 20
+    when: {leader: {power: USA, in: [carter, ford]}}
+    narrative: "Ronald Reagan becomes President and launches a military build-up."
+    effects: [{leader: reagan}, {add: {path: powers.USA.burden, value: 0.02}}]
+
+  - id: mitterrand_elected
+    kind: leadership
+    title: Mitterrand elected
+    window: {earliest: 1981-Q2, latest: 1982-Q4}
+    historical_date: 1981-Q2
+    priority: 20
+    when: {leader: {power: FRA, in: [giscard, pompidou]}}
+    narrative: "Francois Mitterrand is elected President of France."
+    effects: [{leader: mitterrand}]
+
+  - id: andropov_succeeds
+    kind: leadership
+    title: Andropov succeeds Brezhnev
+    window: {earliest: 1982-Q4, latest: 1983-Q4}
+    historical_date: 1982-Q4
+    priority: 20
+    when: {leader: {power: USSR, in: [brezhnev]}}
+    narrative: "Brezhnev dies; former KGB chief Yuri Andropov takes power."
+    effects: [{leader: andropov}]
+
+  - id: chernenko_succeeds
+    kind: leadership
+    title: Chernenko succeeds Andropov
+    window: {earliest: 1984-Q1, latest: 1984-Q4}
+    historical_date: 1984-Q1
+    priority: 20
+    when: {leader: {power: USSR, in: [andropov]}}
+    narrative: "Andropov dies; the ailing Konstantin Chernenko becomes General Secretary."
+    effects: [{leader: chernenko}]
+
+  # ------------------------------------------------------------ cutscenes
+  - id: kim_seeks_war_saigon
+    kind: cutscene
+    title: Kim Il-sung asks after the fall of Saigon
+    window: {earliest: 1975-Q1, latest: 1978-Q4}
+    when:
+      all:
+        - fired: fall_of_saigon
+        - any: [{flag: korean_armistice}, {flag: korean_frozen_conflict}]
+        - no_flag: [korea_peace_treaty, us_troops_korea, korean_war, kim_asks]
+    # In April 1975, days after Phnom Penh fell and as Saigon was falling, Kim went to Beijing
+    # and spoke of liberating the South; Mao and Deng turned him down. Here he asks only if US
+    # troops have left the South (E31).
+    narrative: "After the fall of Saigon, Kim Il-sung asks his patrons to back a war to unify Korea."
+    effects: [{flag: kim_asks}]
+
+  - id: paris_peace_accords
+    kind: cutscene
+    title: The Paris Peace Accords
+    window: {earliest: 1970-Q1, latest: 1976-Q4}
+    historical_date: 1973-Q1
+    when: {outcome: {event: vietnam_war, in: [a_withdrew, partition]}}
+    narrative: "The Paris Peace Accords end direct American involvement in Vietnam."
+    effects: [{flag: paris_accords}, {tension: -0.05}]
+
+  - id: uk_joins_eec
+    kind: cutscene
+    title: Britain joins the EEC
+    window: {earliest: 1973-Q1, latest: 1976-Q4}
+    historical_date: 1973-Q1
+    when:
+      all:
+        - fired: treaty_of_rome
+        - not: {leader: {power: FRA, in: [de_gaulle]}}
+    narrative: "Britain, Ireland and Denmark join the European Communities."
+    effects: [{flag: uk_in_eec}, {add: {path: powers.UK.growth, value: 0.003}}, {relations: {a: UK, b: FRA, add: 0.1}}]
+
+  - id: chile_coup
+    kind: cutscene
+    title: The coup in Chile
+    window: {earliest: 1973-Q3, latest: 1975-Q4}
+    historical_date: 1973-Q3
+    when: {focus: {power: USA, region: latin_america, mode: covert, within_years: 1}}
+    narrative: "General Pinochet overthrows Salvador Allende."
+    effects: [{flag: chile_coup}, {shift_influence: {region: latin_america, toward: USA, amount: 0.1}}, {add: {path: powers.USA.prestige, value: -0.03}}]
+
+  - id: oil_shock
+    kind: cutscene
+    title: The oil shock
+    window: {earliest: 1973-Q4, latest: 1976-Q4}
+    historical_date: 1973-Q4
+    when: {fired: yom_kippur_war}
+    narrative: "OPEC's embargo quadruples oil prices; the West falls into stagflation."
+    effects:
+      - flag: oil_shock
+      - add: {path: powers.USA.economy, value: -0.08}
+      - add: {path: powers.UK.economy, value: -0.03}
+      - add: {path: powers.FRA.economy, value: -0.03}
+      - add: {path: powers.USSR.economy, value: 0.03}
+      - add: {path: powers.USA.stability, value: -0.05}
+
+  - id: watergate
+    kind: cutscene
+    title: Watergate
+    window: {earliest: 1974-Q3, latest: 1975-Q4}
+    historical_date: 1974-Q3
+    when: {leader: {power: USA, in: [nixon]}}
+    narrative: "Facing impeachment over Watergate, Nixon resigns."
+    effects: [{flag: watergate}, {add: {path: powers.USA.stability, value: -0.1}}]
+
+  - id: carnation_revolution
+    kind: cutscene
+    title: The Carnation Revolution
+    window: {earliest: 1974-Q2, latest: 1975-Q4}
+    historical_date: 1974-Q2
+    narrative: "Portugal's dictatorship falls; its African empire collapses."
+    effects: [{flag: portuguese_decolonization}, {add: {path: regions.central_africa.stability, value: -0.2}}]
+
+  - id: fall_of_saigon
+    kind: cutscene
+    title: The fall of Saigon
+    window: {earliest: 1975-Q1, latest: 1977-Q4}
+    historical_date: 1975-Q2
+    hazard: 0.6
+    when:
+      all:
+        - outcome: {event: vietnam_war, in: [a_withdrew]}
+        - no_flag: vietnam_unified_communist
+    narrative: "North Vietnamese tanks enter Saigon; Vietnam is unified under Hanoi."
+    effects: [{flag: [vietnam_unified_communist, saigon_fell]}, {shift_influence: {region: indochina, toward: USSR, amount: 0.25}}, {shift_influence: {region: indochina, toward: PRC, amount: 0.1}}, {add: {path: powers.USA.prestige, value: -0.1}}]
+
+  - id: helsinki_accords
+    kind: cutscene
+    title: The Helsinki Final Act
+    window: {earliest: 1975-Q3, latest: 1977-Q4}
+    historical_date: 1975-Q3
+    when:
+      all:
+        - flag: detente
+        - compare: {path: tension, op: lt, value: 0.5}
+    narrative: "The Helsinki Final Act recognizes Europe's borders and commits the East to human rights."
+    effects: [{flag: helsinki}, {add: {path: powers.USSR.prestige, value: 0.05}}, {add: {path: regions.eastern_europe.stability, value: -0.05}}, {tension: -0.05}]
+
+  - id: era_of_stagnation
+    kind: cutscene
+    title: The era of stagnation
+    window: {earliest: 1975-Q1, latest: 1980-Q4}
+    historical_date: 1975-Q1
+    when: {leader: {power: USSR, in: [brezhnev, soviet_hardliner]}}
+    narrative: "Soviet growth slows to a crawl under the weight of military spending and central planning."
+    effects: [{flag: soviet_stagnation}, {add: {path: powers.USSR.growth, value: -0.03}}]
+
+  - id: ogaden_war
+    kind: cutscene
+    title: The Ogaden War
+    window: {earliest: 1977-Q3, latest: 1978-Q4}
+    historical_date: 1977-Q3
+    narrative: "Soviet and Cuban support carries Ethiopia to victory over Somalia; the Horn changes sides."
+    effects: [{flag: ogaden_war}, {shift_influence: {region: horn_of_africa, toward: USSR, amount: 0.25}}]
+
+  - id: camp_david
+    kind: cutscene
+    title: The Camp David Accords
+    window: {earliest: 1978-Q3, latest: 1980-Q4}
+    historical_date: 1978-Q3
+    when: {compare: {path: regions.middle_east.influence.USA, op: ge, value: 0.15}}
+    narrative: "Egypt and Israel make peace at Camp David; Egypt moves into the American camp."
+    effects: [{flag: camp_david}, {shift_influence: {region: middle_east, toward: USA, amount: 0.15}}]
+
+  - id: saur_revolution
+    kind: cutscene
+    title: The Saur Revolution
+    window: {earliest: 1978-Q2, latest: 1980-Q4}
+    historical_date: 1978-Q2
+    narrative: "Communists seize power in Kabul; rebellion spreads through the countryside."
+    effects: [{flag: saur_revolution}, {shift_influence: {region: afghanistan, toward: USSR, amount: 0.3}}, {add: {path: regions.afghanistan.stability, value: -0.2}}]
+
+  - id: us_prc_normalization
+    kind: cutscene
+    title: Normalization with China
+    window: {earliest: 1979-Q1, latest: 1981-Q4}
+    historical_date: 1979-Q1
+    when: {outcome: {event: opening_to_china, in: [aligned_USA]}}
+    narrative: "Washington and Beijing establish full diplomatic relations."
+    effects: [{flag: us_prc_normalized}, {relations: {a: USA, b: PRC, add: 0.2}}]
+
+  - id: iranian_revolution
+    kind: cutscene
+    title: The Iranian Revolution
+    window: {earliest: 1979-Q1, latest: 1981-Q4}
+    historical_date: 1979-Q1
+    when:
+      all:
+        - fired: iran_coup_1953
+        - compare: {path: regions.persian_gulf.stability, op: lt, value: 0.7}
+    narrative: "The Shah flees; Ayatollah Khomeini establishes an Islamic Republic hostile to America."
+    effects: [{flag: iranian_revolution}, {shift_influence: {region: persian_gulf, toward: USA, amount: -0.3}}, {tension: 0.05}, {add: {path: powers.USA.prestige, value: -0.05}}]
+
+  - id: sino_vietnamese_war
+    kind: cutscene
+    title: The Sino-Vietnamese War
+    window: {earliest: 1979-Q1, latest: 1980-Q4}
+    historical_date: 1979-Q1
+    when:
+      all:
+        - status: {power: PRC, in: [active]}
+        - flag: [vietnam_unified_communist, sino_soviet_split]
+        - regime: {power: PRC, in: [ccp]}
+    narrative: "China invades Vietnam to teach it a lesson."
+    effects: [{flag: sino_vietnamese_war}, {add: {path: powers.PRC.conventional, value: -0.2}}, {add: {path: regions.indochina.stability, value: -0.1}}]
+
+  - id: sandinista_victory
+    kind: cutscene
+    title: The Sandinistas take power
+    window: {earliest: 1979-Q3, latest: 1981-Q4}
+    historical_date: 1979-Q3
+    narrative: "The Sandinistas overthrow Somoza in Nicaragua."
+    effects: [{flag: sandinistas}, {shift_influence: {region: caribbean, toward: USSR, amount: 0.1}}]
+
+  - id: nato_dual_track
+    kind: cutscene
+    title: NATO's double-track decision
+    window: {earliest: 1979-Q4, latest: 1982-Q4}
+    historical_date: 1979-Q4
+    when: {compare: {path: powers.USSR.nuclear, op: ge, path_rhs: powers.USA.nuclear, scale: 0.8}}
+    narrative: "NATO answers the Soviet SS-20 with talks backed by the threat of new missiles in Europe."
+    effects: [{flag: nato_dual_track}, {tension: 0.05}]
+
+  - id: solidarity_strikes
+    kind: cutscene
+    title: Solidarity
+    window: {earliest: 1980-Q3, latest: 1982-Q4}
+    historical_date: 1980-Q3
+    when: {compare: {path: regions.eastern_europe.stability, op: lt, value: 0.7}}
+    narrative: "Strikes at the Gdansk shipyard give birth to Solidarity."
+    effects: [{flag: solidarity}, {add: {path: regions.eastern_europe.stability, value: -0.1}}]
+
+  - id: falklands_war
+    kind: cutscene
+    title: The Falklands War
+    window: {earliest: 1982-Q2, latest: 1982-Q4}
+    historical_date: 1982-Q2
+    when: {leader: {power: UK, in: [thatcher]}}
+    narrative: "Britain retakes the Falklands from Argentina."
+    effects: [{flag: falklands}, {add: {path: powers.UK.prestige, value: 0.05}}]
+
+  - id: sdi_announced
+    kind: cutscene
+    title: The Strategic Defense Initiative
+    window: {earliest: 1983-Q1, latest: 1986-Q4}
+    historical_date: 1983-Q1
+    when:
+      all:
+        - leader: {power: USA, in: [reagan]}
+        - compare: {path: powers.USA.tech_missile, op: ge, value: 2.0}
+    narrative: "Reagan announces the Strategic Defense Initiative."
+    effects: [{flag: sdi}, {add: {path: powers.USSR.burden, value: 0.02}}, {tension: 0.05}]
+
+  - id: kal_007
+    kind: cutscene
+    title: The downing of KAL 007
+    window: {earliest: 1983-Q3, latest: 1983-Q4}
+    historical_date: 1983-Q3
+    when: {compare: {path: tension, op: ge, value: 0.25}}
+    narrative: "Soviet interceptors shoot down Korean Air Lines Flight 007."
+    effects: [{flag: kal_007}, {tension: 0.08}, {relations: {a: USA, b: USSR, add: -0.1}}]
+
+  - id: grenada
+    kind: cutscene
+    title: The invasion of Grenada
+    window: {earliest: 1983-Q4, latest: 1984-Q4}
+    historical_date: 1983-Q4
+    when: {leader: {power: USA, in: [reagan]}}
+    narrative: "American forces invade Grenada."
+    effects: [{flag: grenada}, {shift_influence: {region: caribbean, toward: USA, amount: 0.05}}]
+
+  # -------------------------------------------------------- major events
+  - id: yom_kippur_war
+    kind: major
+    title: The Yom Kippur War and DEFCON 3
+    window: {earliest: 1973-Q4, latest: 1976-Q4}
+    historical_date: 1973-Q4
+    hazard: 0.8
+    when:
+      all:
+        - compare: {path: regions.middle_east.influence.USA, op: ge, value: 0.1}
+        - any:
+            - compare: {path: regions.middle_east.influence.USSR, op: ge, value: 0.05}
+            - flag: six_day_war
+    narrative: "Egypt and Syria attack Israel; Brezhnev threatens to send Soviet troops."
+    model:
+      family: crisis
+      tier: 2
+      region: middle_east
+      config:
+        roles:
+          USSR: {side: a, values: {a_prevails: 1.0, b_prevails: -1.0, compromise: 0.4, limited_war: -5.0, nuclear_war: -50}, escalation_cost: 0.1, audience_cost: 0.5}
+          USA: {side: b, values: {a_prevails: -1.0, b_prevails: 1.0, compromise: 0.5, limited_war: -5.0, nuclear_war: -50}, escalation_cost: 0.1}
+        script:
+          - {stage: move, actor: USSR, options: [{id: restraint, kind: concede}, {id: threaten_intervention, kind: escalate}]}
+          - {stage: move, actor: USA, options: [{id: defcon_3, kind: escalate}, {id: restrain_israel, kind: deal}]}
+          - {stage: respond, actor: USSR}
+          - {stage: move, actor: USSR, options: [{id: stand_down, kind: concede}, {id: deploy_airborne, kind: escalate}]}
+          - {stage: accident, per_rung: 0.03, nuclear_per_rung: 0.15}
+          - {stage: move, actor: USA, options: [{id: accept_soviet_terms, kind: concede}, {id: hold_alert, kind: hold}]}
+      bindings:
+        - {at: roles.USSR.values.nuclear_war, base: -50, terms: {powers.USA.nuclear: -1.0}, clamp: [-90, -30]}
+        - {at: roles.USA.values.nuclear_war, base: -50, terms: {powers.USSR.nuclear: -1.0}, clamp: [-90, -30]}
+      historical:
+        choices: {USSR: [threaten_intervention, stand_down], USA: [defcon_3]}
+        chance: [calm]
+        outcome: b_prevails
+    outcomes:
+      a_prevails: {narrative: "Soviet pressure imposes a ceasefire on Moscow's terms.", effects: [{flag: yom_kippur}, {shift_influence: {region: middle_east, toward: USSR, amount: 0.15}}]}
+      b_prevails: {narrative: "The Soviet threat recedes; Washington brokers the ceasefire.", effects: [{flag: yom_kippur}, {shift_influence: {region: middle_east, toward: USA, amount: 0.1}}, {add: {path: powers.USA.credibility, value: 0.05}}]}
+      compromise: {narrative: "A joint ceasefire resolution ends the war.", effects: [{flag: yom_kippur}, {tension: -0.05}]}
+      limited_war: {narrative: "Soviet and American forces clash in the Middle East.", effects: [{flag: [yom_kippur, superpower_war_middle_east]}, {tension: 0.3}]}
+      nuclear_war: {effects: [{end_campaign: nuclear_war}]}
+
+  - id: angola
+    kind: major
+    title: The Angolan Civil War
+    window: {earliest: 1975-Q4, latest: 1977-Q4}
+    historical_date: 1975-Q4
+    when: {all: [{flag: portuguese_decolonization}, {regime: {power: PRC, in: [ccp]}}]}
+    model:
+      family: attrition
+      tier: 2
+      cadence: quarterly
+      region: central_africa
+      config:
+        sponsors:
+          USSR: {side: a, capacity: 0.8, direct: true, values: {a_victory: 1.5, b_victory: -1.5, partition: 0.0, a_withdrew: -1.0, b_withdrew: 1.5, stalemate: 0.0}}
+          USA: {side: b, capacity: 0.7, values: {a_victory: -1.0, b_victory: 1.5, partition: 0.0, a_withdrew: 1.5, b_withdrew: -0.8, stalemate: 0.0}}
+          PRC: {side: b, capacity: 0.3, values: {a_victory: -0.5, b_victory: 0.8, partition: 0.0, a_withdrew: 0.8, b_withdrew: -0.3, stalemate: 0.0}}
+        leads: {a: USSR, b: USA}
+        local_strength: {a: 0.8, b: 0.8}
+        initial_control: 0.5
+        step: 0.08
+        victory_threshold: 0.82
+        max_rounds: 12
+      historical:
+        choices: {USSR: [high, direct*3], USA: [low, low, withdraw], PRC: [low, withdraw]}
+        chance: [a_gains*4]
+        outcome: b_withdrew
+    outcomes:
+      a_victory: {narrative: "The MPLA, backed by Cuban troops, takes Angola.", effects: [{shift_influence: {region: central_africa, toward: USSR, amount: 0.25}}, {flag: angola_mpla}]}
+      b_withdrew: {narrative: "Congress cuts off covert aid; the MPLA wins with Cuban help.", effects: [{shift_influence: {region: central_africa, toward: USSR, amount: 0.25}}, {flag: angola_mpla}]}
+      b_victory: {narrative: "UNITA and the FNLA defeat the MPLA.", effects: [{shift_influence: {region: central_africa, toward: USA, amount: 0.2}}]}
+      a_withdrew: {narrative: "Cuba withdraws and the MPLA collapses.", effects: [{shift_influence: {region: central_africa, toward: USA, amount: 0.2}}]}
+      partition: {narrative: "Angola is partitioned among its factions.", effects: [{flag: angola_partitioned}]}
+      stalemate: {narrative: "Angola's civil war grinds on.", effects: [{flag: angola_civil_war_continues}]}
+
+  - id: afghanistan_decision
+    kind: major
+    title: The Soviet decision on Afghanistan
+    window: {earliest: 1979-Q4, latest: 1983-Q4}
+    historical_date: 1979-Q4
+    when:
+      all:
+        - flag: saur_revolution
+        - compare: {path: regions.afghanistan.stability, op: lt, value: 0.6}
+    model:
+      family: intervention
+      tier: 2
+      region: afghanistan
+      config:
+        roles: {patron: USSR, rival: USA}
+        p_strong: 0.6
+        report_accuracy: 0.6
+        quagmire_prob: 0.7
+        values:
+          patron: {reformed: -0.2, crushed: 1.0, defected: -1.5, quagmire: -1.0, clash: -15}
+          rival: {reformed: 0.2, crushed: -0.8, defected: 1.0, quagmire: 1.0, clash: -15}
+        costs: {crackdown: 0.1, intervene: 0.4, back_down: 0.8, condemn: 0.05, covert_aid: 0.2, confront: 0.8}
+        clash_risk: 0.1
+      bindings:
+        - {at: costs.intervene, base: 0.1, terms: {powers.USSR.reformism: 1.0}, clamp: [0.05, 3.0]}
+      historical:
+        choices: {USSR: [intervene], USA: [covert_aid]}
+        chance: [strong, alarming, quagmire]
+        outcome: quagmire
+    outcomes:
+      quagmire: {narrative: "Soviet troops enter Afghanistan and are drawn into a guerrilla war.", effects: [{flag: soviet_invasion_afghanistan}, {unflag: detente}, {tension: 0.1}, {relations: {a: USA, b: USSR, add: -0.2}}]}
+      crushed: {narrative: "Soviet forces quickly pacify Afghanistan.", effects: [{shift_influence: {region: afghanistan, toward: USSR, amount: 0.3}}, {unflag: detente}]}
+      defected: {narrative: "Kabul's communist regime collapses.", effects: [{shift_influence: {region: afghanistan, toward: USA, amount: 0.15}}, {add: {path: powers.USSR.prestige, value: -0.1}}]}
+      reformed: {narrative: "Moscow forces a broader, more moderate government in Kabul.", effects: []}
+      clash: {narrative: "American and Soviet forces clash over Afghanistan.", effects: [{tension: 0.4}, {relations: {a: USA, b: USSR, add: -0.4}}]}
+    tags:
+      "patron:intervene": {effects: [{add: {path: powers.USSR.prestige, value: -0.05}}]}
+
+  - id: soviet_afghan_war
+    kind: major
+    title: The Soviet-Afghan War
+    window: {earliest: 1979-Q4, latest: 1985-Q4}
+    historical_date: 1980-Q1
+    when: {outcome: {event: afghanistan_decision, in: [quagmire]}}
+    # Light review (2026-10-26, EXPERIMENTS.md E48; Kalinovsky, A Long Goodbye, 2011; Coll,
+    # Ghost Wars, 2004; Cordovez and Harrison, Out of Afghanistan, 1995; Braithwaite,
+    # Afgantsy, 2011). Mechanism: asymmetric counterinsurgency (Mack, World Politics 27,
+    # 1975): the resistance's stake was near-indivisible, Moscow's a client's survival.
+    # - The mujahideen lead side b (computer-run, hand values: judgment), armed by the US,
+    #   China and Britain (through Pakistan); the 40th Army fights directly for Kabul.
+    # - Moscow expected a short operation (Brezhnev's "three or four weeks"): its prior that
+    #   the resistance can be bent. Its own cost of staying rises with its leader's
+    #   reformism (bound), so Gorbachev's arrival re-binds the war: the Politburo decided in
+    #   November 1986 to leave within two years.
+    # - The Geneva talks (1982-88) negotiated the terms of a Soviet withdrawal, not a line of
+    #   partition, so they are the withdraw choice rather than offers.
+    # - The domestic cost of casualties (E48) applies, at an autocracy's sensitivity.
+    model:
+      family: attrition
+      tier: 1
+      holdout: true
+      payoffs: derived
+      effort_costs: derived
+      effects: contract
+      cadence: annual
+      region: afghanistan
+      config:
+        sponsors:
+          USSR: {side: a, capacity: 1.0, direct: true, values: {a_victory: 2.0, a_withdrew: -1.0, b_victory: -2.5, b_withdrew: 2.0, partition: 0.0, stalemate: -0.5}}
+          # the resistance (computer-run, hand values: judgment): Kabul's fall above all, a
+          # Soviet-held Afghanistan the worst case
+          MUJ: {side: b, capacity: 0.0, cost_scale: 0.2, values: {a_victory: -5.0, b_victory: 3.0, partition: -2.0, a_withdrew: 3.0, b_withdrew: -5.0, stalemate: -1.0}}
+          USA: {side: b, capacity: 0.8, values: {a_victory: -1.5, a_withdrew: 2.0, b_victory: 2.0, b_withdrew: -1.0, partition: 0.0, stalemate: 0.3}}
+          PRC: {side: b, capacity: 0.3, values: {a_victory: -0.8, a_withdrew: 1.0, b_victory: 1.0, b_withdrew: -0.5, partition: 0.0, stalemate: 0.2}}
+          UK: {side: b, capacity: 0.2, values: {a_victory: -0.5, a_withdrew: 0.5, b_victory: 0.5, b_withdrew: -0.3, partition: 0.0, stalemate: 0.0}}
+        leads: {a: USSR, b: MUJ}
+        local_strength: {a: 0.6, b: 1.0}
+        initial_control: 0.6
+        step: 0.04
+        victory_threshold: 0.84
+        max_rounds: 48
+        weariness: {direct: 0.025, high: 0.01}
+        types:
+          a:
+            levels:
+              staying: {weight: 0.5, belief: 0.5, cost: 0.7}
+              tiring: {weight: 0.5, belief: 0.5, cost: 1.9}
+          b:
+            levels:
+              unyielding: {weight: 0.8, belief: 0.3, cost: 0.5}
+              bendable: {weight: 0.2, belief: 0.7, cost: 2.0}
+      bindings:
+        # Moscow's cost of staying rises with its leader's reformism (Gorbachev 0.95)
+        - {at: types.a.levels.staying.cost, base: 0.5, terms: {powers.USSR.reformism: 1.0}, clamp: [0.25, 2.0]}
+        - {at: types.a.levels.tiring.cost, base: 1.5, terms: {powers.USSR.reformism: 2.0}, clamp: [0.75, 5.0]}
+      historical:
+        choices: {USSR: [direct*7, high, withdraw], USA: [low*6, high*3], PRC: [low*9], UK: [low*9], MUJ: [high*10]}
+        chance: [staying, unyielding, a_gains/b_gains*20]
+        outcome: a_withdrew
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      a_withdrew: {narrative: "The Red Army withdraws from Afghanistan, defeated.", additions: [{flag: soviet_withdrawal_afghanistan}]}
+      a_victory: {narrative: "The mujahideen are crushed."}
+      b_victory: {narrative: "The mujahideen take Kabul while Soviet troops are still in the country.", additions: [{flag: soviet_withdrawal_afghanistan}]}
+      b_withdrew: {narrative: "Cut off from foreign arms, the resistance fades."}
+      partition: {narrative: "A negotiated settlement partitions Afghanistan.", additions: [{flag: afghan_settlement}]}
+      stalemate: {narrative: "The Afghan war grinds on without end.", additions: [{flag: afghan_stalemate}]}
+
+  - id: polish_crisis
+    kind: major
+    title: The Polish crisis
+    window: {earliest: 1981-Q4, latest: 1983-Q4}
+    historical_date: 1981-Q4
+    when: {flag: solidarity}
+    model:
+      family: intervention
+      tier: 2
+      region: eastern_europe
+      config:
+        roles: {patron: USSR, rival: USA}
+        p_strong: 0.6
+        report_accuracy: 0.7
+        values:
+          patron: {reformed: -0.5, crushed: 0.6, defected: -3.0, quagmire: -1.5, clash: -30}
+          rival: {reformed: 0.5, crushed: -0.3, defected: 2.0, quagmire: 0.6, clash: -30}
+        costs: {crackdown: 0.1, intervene: 0.8, back_down: 1.0, condemn: 0.05, covert_aid: 0.2, confront: 1.0}
+        clash_risk: 0.15
+      bindings:
+        - {at: costs.intervene, base: 0.3, terms: {powers.USSR.reformism: 1.0, powers.USSR.stability: -0.5}, clamp: [0.05, 3.0]}
+      historical:
+        choices: {USSR: [crackdown], USA: [covert_aid]}
+        chance: [strong, alarming, crushed]
+        outcome: crushed
+    outcomes:
+      crushed: {narrative: "General Jaruzelski declares martial law; Solidarity is driven underground.", effects: [{flag: martial_law_poland}, {add: {path: powers.USSR.prestige, value: -0.05}}, {add: {path: regions.eastern_europe.stability, value: 0.05}}]}
+      reformed: {narrative: "Warsaw legalizes Solidarity and negotiates reforms.", effects: [{flag: polish_reforms}, {add: {path: regions.eastern_europe.stability, value: -0.05}}]}
+      defected: {narrative: "Poland breaks with the Soviet bloc.", effects: [{flag: solidarity_wins}, {shift_influence: {region: eastern_europe, toward: USA, amount: 0.2}}, {add: {path: powers.USSR.prestige, value: -0.15}}]}
+      quagmire: {narrative: "A Soviet invasion of Poland bogs down in national resistance.", effects: [{add: {path: powers.USSR.stability, value: -0.1}}, {flag: polish_resistance}]}
+      clash: {narrative: "Crisis over Poland escalates into war between the blocs.", effects: [{end_campaign: nuclear_war}]}
+
+  - id: euromissile_talks
+    kind: major
+    title: The Euromissile talks
+    window: {earliest: 1981-Q4, latest: 1984-Q4}
+    historical_date: 1981-Q4
+    when: {flag: nato_dual_track}
+    model:
+      family: bargaining
+      tier: 2
+      cadence: quarterly
+      region: western_europe
+      config:
+        roles: {A: USA, B: USSR}
+        grid: [0.0, 0.25, 0.5, 0.75, 1.0]
+        horizon: 8
+        first_proposer: A
+        surplus: 2.0
+        sides:
+          A: {discount: 0.97, delay_cost: 0.02, breakdown_value: -1.0, impasse_value: 0.0, commitment: 1.0, commitment_cost: 1.0}
+          B: {discount: 0.97, delay_cost: 0.02, breakdown_value: -1.0, impasse_value: -0.3, commitment: 0.25, commitment_cost: 0.5}
+        breakdown: {base: 0.02, growth: 0.01, max: 0.1}
+        consent:
+          - {role: UK, base: 0.1, per_share: 0.2, veto_value: 0.0}
+          - {role: FRA, base: 0.1, per_share: 0.2, veto_value: 0.0}
+      historical:
+        choices: {USA: [commit, offer_100, reject, offer_100, reject, offer_100, reject, offer_100, reject], USSR: [commit, reject, offer_025, reject, offer_025, reject, offer_025, reject, offer_000]}
+        chance: [talks_continue*8]
+        outcome: impasse
+    outcomes:
+      agreement: {narrative: "An early agreement limits intermediate-range missiles in Europe.", effects: [{flag: inf_agreement_early}, {add: {path: arms_control, value: 0.1}}, {tension: -0.1}]}
+      breakdown: {narrative: "The Soviet delegation walks out; tensions spike.", effects: [{flag: [pershing_deployed, euromissile_crisis]}, {tension: 0.15}]}
+      impasse: {narrative: "The talks deadlock; Pershing II and cruise missiles deploy to Europe.", effects: [{flag: pershing_deployed}, {tension: 0.1}]}
+      vetoed: {narrative: "European allies reject the proposed deal; deployment goes ahead.", effects: [{flag: pershing_deployed}, {tension: 0.1}]}
+
+  - id: able_archer
+    kind: major
+    title: The 1983 war scare
+    window: {earliest: 1983-Q4, latest: 1986-Q4}
+    historical_date: 1983-Q4
+    when:
+      all:
+        - flag: pershing_deployed
+        - compare: {path: tension, op: ge, value: 0.3}
+        - leader: {power: USSR, in: [andropov, chernenko, soviet_hardliner, brezhnev]}
+    narrative: "Amid the Pershing deployment, a Soviet early-warning false alarm and NATO's Able Archer exercise meet a Kremlin braced for a surprise attack."
+    # Light review (2026-10-26, EXPERIMENTS.md E48; Barrass, Able Archer 83 and the
+    # Soviet War Scare, 2016; Jones, Able Archer 83, 2016; Hoffman, The Dead Hand, 2009;
+    # President's Foreign Intelligence Advisory Board, The Soviet "War Scare", 1990; Andrew
+    # and Gordievsky, KGB, 1990). Mechanism: a misperception spiral (Jervis, Perception and
+    # Misperception, 1976) in which officers below the leaders decide at incidents.
+    # - From 1981 the KGB's Operation RYaN searched for signs of a US surprise attack;
+    #   Andropov thought one possible. Moscow's own prior that Washington meant to strike
+    #   (nature's: almost never), bound to tension: 0.3 at the replay's world (0.56).
+    # - 26 September: the Oko satellites reported US launches; Lt. Col. Stanislav Petrov
+    #   judged it a false alarm and reported a malfunction. Petrov later said colleagues
+    #   trained as soldiers would have reported an attack (Hoffman 2009). A report would
+    #   have put the leadership to launch on warning or wait.
+    # - 7-11 November: Able Archer 83 rehearsed nuclear release; Soviet nuclear-capable
+    #   aircraft in East Germany and Poland went on alert. NATO's Lt. Gen. Leonard Perroots
+    #   (USAF Europe intelligence) chose not to answer it with a NATO alert (PFIAB 1990).
+    # - Gordievsky's reports through MI6 told London and then Washington of the fear
+    #   (Thatcher's choice to reassure Moscow, as the UK partner).
+    model:
+      family: crisis
+      tier: 1
+      payoffs: derived
+      effects: contract
+      region: western_europe
+      config:
+        roles:
+          USA: {side: a, values: {a_prevails: 0.3, b_prevails: 0.0, compromise: 0.1, limited_war: -10, nuclear_war: -60}, escalation_cost: 0.05}
+          UK: {side: a, values: {a_prevails: 0.2, b_prevails: 0.0, compromise: 0.1, limited_war: -10, nuclear_war: -60}}
+          USSR: {side: b, values: {a_prevails: -0.5, b_prevails: 0.3, compromise: 0.1, limited_war: -10, nuclear_war: -60}, escalation_cost: 0.05}
+          # officers: the Oko duty officer and NATO's intelligence chief (E48)
+          OKO: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
+          USAFE: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
+        script:
+          - {stage: types, roles: {USA: {p_high_resolve: 0.02, resolve_beliefs: {USSR: 0.3}}}}
+          - {stage: intel, about: USA, observers: [USSR], accuracy: 0.7}
+          # Petrov's false alarm: a launch report the duty officer passes on as an attack
+          # (by the book) or as a malfunction (steady); a report puts the Soviet leader to
+          # launch or wait, at the cost of riding out an attack it half believes real
+          - stage: incident
+            officer: OKO
+            command: b
+            base: 0.1
+            temperaments: {steady: {weight: 0.5, hold_cost: 0.5, fire_cost: 5.0}, by_the_book: {weight: 0.5, hold_cost: 15.0}}
+            fire: {leader: USSR, launch: nuclear_war, wait: continue, hold_cost: 120.0}
+          - {stage: move, actor: USA, options: [{id: routine_exercise, kind: escalate, rungs: 1}, {id: realistic_exercise, kind: escalate, rungs: 2}]}
+          - {stage: partner, actor: UK, options: [{id: reassure_moscow, target: neutral, risk_multiplier: 0.8}, {id: stay_silent, target: neutral}]}
+          # under RYaN, standing down risks being caught unready by an attack Moscow half
+          # believes in: its prior (as above) times the loss (100); 30 at the replay's world
+          - {stage: move, actor: USSR, options: [{id: stand_down, kind: concede, costs: {USSR: 30.0}}, {id: raise_alert, kind: escalate, rungs: 1}, {id: prepare_preemption, kind: escalate, rungs: 2}]}
+          # Perroots: a Soviet alert seen in NATO's intelligence, answered with a NATO alert
+          # (by the book) or not (steady); a NATO alert puts Moscow to preempt or wait
+          - stage: incident
+            officer: USAFE
+            command: a
+            per_rung: 0.15
+            temperaments: {steady: {weight: 0.7, hold_cost: 0.5, fire_cost: 5.0}, by_the_book: {weight: 0.3, hold_cost: 15.0}}
+            fire: {leader: USSR, launch: nuclear_war, wait: continue, hold_cost: 120.0}
+          - {stage: accident, per_rung: 0.01, cap: 0.2}
+          - {stage: move, actor: USA, options: [{id: end_exercise, kind: concede}, {id: continue_exercise, kind: hold}]}
+        final_outcome: compromise
+      bindings:
+        - {at: script.1.accuracy, base: 0.55, terms: {powers.USSR.tech_space: 0.05}, clamp: [0.55, 0.9]}
+        # RYaN: Moscow's prior that Washington means to strike rises with tension
+        - {at: script.0.roles.USA.resolve_beliefs.USSR, base: -0.04, terms: {tension: 0.6}, clamp: [0.02, 0.8]}
+        # the cost to the Soviet leader of waiting out a report it partly believes: its
+        # belief (as above) times the loss of riding out a real first strike (400 payoff
+        # units, twice the nuclear catastrophe: the retaliatory force lost as well); 120 at
+        # the replay's world. Above 200 (tension over 0.9) it launches on warning
+        - {at: script.2.fire.hold_cost, base: -16, terms: {tension: 240}, clamp: [0, 400]}
+        - {at: script.6.fire.hold_cost, base: -16, terms: {tension: 240}, clamp: [0, 400]}
+        - {at: script.5.options.0.costs.USSR, base: -4, terms: {tension: 60}, clamp: [0, 80]}
+      historical:
+        choices: {USA: [routine_exercise, end_exercise], UK: [stay_silent], USSR: [raise_alert], OKO: [restrain], USAFE: [restrain]}
+        chance: [low, reassuring, "incident:steady", "incident:steady", calm]
+        outcome: b_prevails
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      a_prevails: {narrative: "Moscow stands its forces down; the exercise ends uneventfully."}
+      b_prevails: {narrative: "The exercise ends; Washington learns how close Moscow came to panic.", additions: [{flag: able_archer_defused}]}
+      compromise: {narrative: "The war scare passes."}
+      limited_war: {narrative: "A Soviet alert spirals into armed clashes in Central Europe.", additions: [{flag: nato_warsaw_clash}]}
+      nuclear_war: {narrative: "Misperception ends in nuclear war."}
+    tags:
+      "USSR:move=raise_alert": {effects: [{flag: war_scare_1983}]}
+
+  - id: chiang_kai_shek_dies
+    kind: leadership
+    title: Death of Chiang Kai-shek (Nationalist China)
+    window: {earliest: 1975-Q2, latest: 1976-Q4}
+    priority: 20
+    when:
+      all:
+        - leader: {power: PRC, in: [chiang_kai_shek]}
+        - regime: {power: PRC, in: [kmt]}
+    narrative: "Chiang Kai-shek dies; his son Chiang Ching-kuo takes over the Nationalist government."
+    effects: [{leader: chiang_ching_kuo}]

@@ -1,0 +1,502 @@
+# Era IV, 1963-1972: Vietnam, the Sino-Soviet confrontation and the triangle. Illustrative.
+era: 4
+title: Vietnam and the triangle (1963-1972)
+events:
+  # ----------------------------------------------------------- leadership
+  - id: johnson_succeeds
+    kind: leadership
+    title: Kennedy assassinated
+    window: {earliest: 1963-Q4, latest: 1964-Q4}
+    historical_date: 1963-Q4
+    priority: 20
+    when: {leader: {power: USA, in: [kennedy]}}
+    narrative: "President Kennedy is assassinated in Dallas; Lyndon Johnson takes office."
+    effects: [{leader: johnson}, {add: {path: powers.USA.stability, value: -0.03}}]
+
+  - id: douglas_home_succeeds
+    kind: leadership
+    title: Douglas-Home succeeds Macmillan
+    window: {earliest: 1963-Q4, latest: 1964-Q3}
+    historical_date: 1963-Q4
+    priority: 20
+    when: {leader: {power: UK, in: [macmillan]}}
+    narrative: "Macmillan resigns; Alec Douglas-Home becomes Prime Minister."
+    effects: [{leader: douglas_home}]
+
+  - id: khrushchev_ousted
+    kind: leadership
+    title: Khrushchev ousted
+    window: {earliest: 1964-Q4, latest: 1966-Q4}
+    historical_date: 1964-Q4
+    priority: 20
+    when: {leader: {power: USSR, in: [khrushchev]}}
+    narrative: "The Presidium removes Khrushchev; Leonid Brezhnev becomes First Secretary."
+    effects: [{leader: brezhnev}]
+
+  - id: wilson_elected
+    kind: leadership
+    title: Wilson elected
+    window: {earliest: 1964-Q4, latest: 1966-Q4}
+    historical_date: 1964-Q4
+    priority: 20
+    when: {leader: {power: UK, in: [douglas_home, macmillan]}}
+    narrative: "Labour returns to power under Harold Wilson."
+    effects: [{leader: wilson}]
+
+  - id: nixon_inaugurated
+    kind: leadership
+    title: Nixon inaugurated
+    window: {earliest: 1969-Q1, latest: 1969-Q4}
+    historical_date: 1969-Q1
+    priority: 20
+    when: {leader: {power: USA, in: [johnson]}}
+    narrative: "Richard Nixon becomes President, promising peace with honor in Vietnam."
+    effects: [{leader: nixon}]
+
+  - id: pompidou_elected
+    kind: leadership
+    title: Pompidou elected
+    window: {earliest: 1969-Q2, latest: 1970-Q4}
+    historical_date: 1969-Q2
+    priority: 20
+    when: {leader: {power: FRA, in: [de_gaulle]}}
+    narrative: "De Gaulle resigns; Georges Pompidou is elected President."
+    effects: [{leader: pompidou}, {relations: {a: FRA, b: USA, add: 0.1}}]
+
+  - id: heath_elected
+    kind: leadership
+    title: Heath elected
+    window: {earliest: 1970-Q2, latest: 1971-Q4}
+    historical_date: 1970-Q2
+    priority: 20
+    when: {leader: {power: UK, in: [wilson]}}
+    narrative: "Edward Heath's Conservatives win the general election."
+    effects: [{leader: heath}]
+
+  # ------------------------------------------------------------ cutscenes
+  - id: kim_seeks_war_vietnam
+    kind: cutscene
+    title: Kim Il-sung looks south again
+    window: {earliest: 1964-Q3, latest: 1972-Q4}
+    when:
+      all:
+        - active: vietnam_war
+        - any: [{flag: korean_armistice}, {flag: korean_frozen_conflict}]
+        - no_flag: [korea_peace_treaty, us_troops_korea, korean_war, kim_asks]
+    # With the US tied down in Vietnam, Pyongyang ran a guerrilla campaign along the DMZ
+    # (1966-69), raided the Blue House and seized the Pueblo (January 1968). With no US troops
+    # in the South, Kim asks his patrons for a second war (E31).
+    narrative: "With America at war in Vietnam, Kim Il-sung asks Moscow and Beijing to back a second war in Korea."
+    effects: [{flag: kim_asks}]
+
+  - id: hotline_test_ban
+    kind: cutscene
+    title: The hotline and the test ban
+    window: {earliest: 1963-Q3, latest: 1966-Q4}
+    historical_date: 1963-Q3
+    when: {outcome: {event: cuban_missile_crisis, in: [compromise, a_prevails, b_prevails]}}
+    narrative: "Washington and Moscow open a hotline and sign the Limited Test Ban Treaty."
+    effects: [{flag: limited_test_ban}, {tension: -0.1}, {relations: {a: USA, b: USSR, add: 0.15}}]
+
+  - id: prc_atomic_bomb
+    kind: cutscene
+    title: The Chinese atomic bomb
+    window: {earliest: 1955-Q1}
+    historical_date: 1964-Q4
+    when:
+      all:
+        - status: {power: PRC, in: [active]}
+        - compare: {path: powers.PRC.tech_nuclear, op: ge, value: 1.0}
+    narrative: "China detonates its first atomic bomb at Lop Nur."
+    effects: [{flag: prc_bomb}, {add: {path: powers.PRC.nuclear, value: 0.2}}, {add: {path: powers.PRC.prestige, value: 0.15}}, {tension: 0.03}]
+
+  - id: gulf_of_tonkin
+    kind: cutscene
+    title: The Gulf of Tonkin
+    window: {earliest: 1964-Q3, latest: 1968-Q4}
+    historical_date: 1964-Q3
+    when:
+      all:
+        - flag: vietnam_partitioned
+        - no_flag: vietnam_unified_communist
+        - any:
+            - compare: {path: regions.indochina.influence.USA, op: ge, value: 0.12}
+            - focus: {power: USA, region: indochina, within_years: 1}
+    narrative: "After clashes in the Gulf of Tonkin, Congress authorizes the President to wage war in Vietnam."
+    effects: [{flag: gulf_of_tonkin}, {tension: 0.05}]
+
+  - id: france_leaves_nato_command
+    kind: cutscene
+    title: France leaves NATO's integrated command
+    window: {earliest: 1966-Q1, latest: 1969-Q1}
+    historical_date: 1966-Q1
+    hazard: 0.5
+    when:
+      all:
+        - leader: {power: FRA, in: [de_gaulle]}
+        - flag: [french_bomb, nato]
+        - compare: {path: powers.FRA.relations.USA, op: lt, value: 0.4}
+    narrative: "De Gaulle withdraws France from NATO's integrated military command."
+    effects: [{flag: france_out_of_nato_command}, {relations: {a: FRA, b: USA, add: -0.1}}, {add: {path: powers.FRA.prestige, value: 0.05}}]
+
+  - id: cultural_revolution
+    kind: cutscene
+    title: The Cultural Revolution
+    window: {earliest: 1966-Q2, latest: 1968-Q4}
+    historical_date: 1966-Q2
+    when:
+      all:
+        - leader: {power: PRC, in: [mao]}
+        - status: {power: PRC, in: [active]}
+    narrative: "Mao unleashes the Cultural Revolution; China turns inward in chaos."
+    effects: [{flag: cultural_revolution}, {add: {path: powers.PRC.stability, value: -0.2}}, {add: {path: powers.PRC.growth, value: -0.01}}]
+
+  - id: six_day_war
+    kind: cutscene
+    title: The Six-Day War
+    window: {earliest: 1967-Q2, latest: 1968-Q4}
+    historical_date: 1967-Q2
+    when: {flag: israel_founded}
+    narrative: "Israel defeats Egypt, Syria and Jordan in six days."
+    effects: [{flag: six_day_war}, {shift_influence: {region: middle_east, toward: USA, amount: 0.1}}, {add: {path: powers.USSR.prestige, value: -0.05}}, {add: {path: regions.middle_east.stability, value: -0.1}}]
+
+  - id: tet_offensive
+    kind: cutscene
+    title: The Tet Offensive
+    window: {earliest: 1967-Q4, latest: 1970-Q4}
+    historical_date: 1968-Q1
+    when: {active_for: {event: vietnam_war, quarters: 14}}
+    narrative: "The Tet Offensive shatters American confidence in the war."
+    effects: [{flag: tet_offensive}, {add: {path: powers.USA.stability, value: -0.1}}, {add: {path: powers.USA.prestige, value: -0.05}}]
+
+  - id: uk_east_of_suez
+    kind: cutscene
+    title: Britain withdraws east of Suez
+    window: {earliest: 1968-Q1, latest: 1971-Q4}
+    historical_date: 1968-Q1
+    when: {flag: india_independent}
+    narrative: "After devaluation, Britain announces its withdrawal from bases east of Suez."
+    effects: [{flag: uk_east_of_suez_withdrawal}, {shift_influence: {region: persian_gulf, toward: UK, amount: -0.15}}, {shift_influence: {region: southeast_asia, toward: UK, amount: -0.15}}]
+
+  - id: npt
+    kind: cutscene
+    title: The Non-Proliferation Treaty
+    window: {earliest: 1968-Q3, latest: 1972-Q4}
+    historical_date: 1968-Q3
+    when:
+      all:
+        - fired: hotline_test_ban
+        - compare: {path: tension, op: lt, value: 0.65}
+    narrative: "The Treaty on the Non-Proliferation of Nuclear Weapons opens for signature."
+    effects: [{flag: npt}, {tension: -0.03}]
+
+  - id: apollo_11
+    kind: cutscene
+    title: Apollo 11
+    race: {winner: USA, loser: USSR}
+    window: {earliest: 1960-Q1}
+    historical_date: 1969-Q3
+    excludes: [soviet_moon_landing]
+    when: {compare: {path: powers.USA.tech_space, op: ge, value: 3.5}}
+    narrative: "Apollo 11 lands on the Moon."
+    effects: [{flag: moon_landing}, {add: {path: powers.USA.prestige, value: 0.15}}]
+
+  - id: soviet_moon_landing
+    kind: cutscene
+    title: A Soviet cosmonaut on the Moon
+    race: {winner: USSR, loser: USA}
+    window: {earliest: 1960-Q1}
+    when: {compare: {path: powers.USSR.tech_space, op: ge, value: 3.5}}
+    narrative: "A Soviet cosmonaut is the first human on the Moon."
+    effects: [{flag: soviet_moon_landing}, {add: {path: powers.USSR.prestige, value: 0.15}}, {add: {path: powers.USA.prestige, value: -0.05}}]
+
+  - id: ostpolitik
+    kind: cutscene
+    title: Ostpolitik
+    window: {earliest: 1970-Q3, latest: 1973-Q4}
+    historical_date: 1970-Q3
+    when:
+      all:
+        - flag: germany_divided
+        - compare: {path: tension, op: lt, value: 0.6}
+    narrative: "Willy Brandt's Ostpolitik normalizes West Germany's relations with the East."
+    effects: [{flag: ostpolitik}, {add: {path: regions.germany.stability, value: 0.1}}, {tension: -0.05}]
+
+  # -------------------------------------------------------- major events
+  - id: vietnam_war
+    kind: major
+    title: The Vietnam War
+    window: {earliest: 1964-Q3, latest: 1968-Q4}
+    historical_date: 1964-Q3
+    when: {all: [{fired: gulf_of_tonkin}, {regime: {power: PRC, in: [ccp]}}]}
+    # Light review (2026-10-26, EXPERIMENTS.md E47; Logevall, Choosing War, 1999; Nguyen,
+    # Hanoi's War, 2012; Zhai, China and the Vietnam Wars, 2000; Gaiduk, The Soviet Union
+    # and the Vietnam War, 1996; Herring, America's Longest War, 2002). Mechanism: an
+    # asymmetric conflict (Mack, "Why Big Nations Lose Small Wars", 1975). Hanoi's stake,
+    # unification, was near-indivisible; Washington's was mostly its reputation as a
+    # guarantor (McNaughton, March 1965: 70% "to avoid a humiliating US defeat"). Relative
+    # resolve and US domestic costs (support fell with the log of casualties; Mueller,
+    # 1973) decided it, and a commitment problem kept the Paris talks (1968-73) from
+    # settling early (Fearon, 1995).
+    model:
+      family: attrition
+      tier: 1
+      payoffs: derived
+      effort_costs: derived
+      effects: contract
+      cadence: annual
+      region: indochina
+      config:
+        sponsors:
+          USA: {side: a, capacity: 1.3, direct: true, values: {a_victory: 2.5, b_victory: -3.0, partition: 0.5, a_withdrew: -1.0, b_withdrew: 2.5, stalemate: -0.5}}
+          # Hanoi (computer-run, hand values: judgment): unification above all, a lasting
+          # division costly (near-indivisible), its own defeat the worst case. A settlement
+          # is worth -6 + 9 x its share: -3.3 at 0.3, 0.3 at 0.7, 3 for the whole South
+          DRV: {side: b, capacity: 0.0, cost_scale: 0.2, values: {a_victory: -5.0, b_victory: 3.0, partition: -2.0, a_withdrew: 3.0, b_withdrew: -5.0, stalemate: -1.0}, settlement: {base: -6.0, per_share: 9.0}}
+          USSR: {side: b, capacity: 0.7, values: {a_victory: -1.5, b_victory: 2.0, partition: 0.0, a_withdrew: 2.0, b_withdrew: -1.5, stalemate: 0.2}}
+          PRC: {side: b, capacity: 0.6, values: {a_victory: -2.0, b_victory: 2.0, partition: 0.0, a_withdrew: 2.0, b_withdrew: -2.0, stalemate: 0.2}}
+        leads: {a: USA, b: DRV}
+        local_strength: {a: 0.7, b: 1.2}
+        initial_control: 0.55
+        step: 0.04
+        victory_threshold: 0.83
+        max_rounds: 48
+        # US domestic attrition (Mueller 1973): support gives out under sustained effort
+        weariness: {high: 0.015, direct: 0.03}
+        # the Paris talks: offers of the South's share, alternating, after the first year
+        offers:
+          grid: [0.3, 0.4, 0.5, 0.6, 0.7]
+          proposer: alternate
+          opens: 4
+        # each side's resolve, with the other side's prior bound to the world (bindings):
+        # Hanoi expected the US to tire, as France had; Washington expected graduated
+        # pressure to bend Hanoi (the Pentagon Papers). Nature's weights are judgment.
+        types:
+          a:
+            levels:
+              staying: {weight: 0.5, belief: 0.4, cost: 1.0}
+              tiring: {weight: 0.5, belief: 0.6, cost: 3.0}
+          b:
+            levels:
+              unyielding: {weight: 0.7, belief: 0.4, cost: 0.5}
+              bendable: {weight: 0.3, belief: 0.6, cost: 2.0}
+      bindings:
+        - {at: sponsors.USA.capacity, base: 0.8, terms: {powers.USA.economy: 0.3}, clamp: [0.5, 2.0]}
+        # Hanoi's prior that the US tires falls with US stability (domestic support): 0.6 at
+        # the 1964 replay world (stability 0.65); the two levels' priors sum to 1
+        - {at: types.a.levels.tiring.belief, base: 1.25, terms: {powers.USA.stability: -1.0}, clamp: [0.05, 0.95]}
+        - {at: types.a.levels.staying.belief, base: -0.25, terms: {powers.USA.stability: 1.0}, clamp: [0.05, 0.95]}
+        # Washington's prior that Hanoi can be bent falls with its intelligence capacity:
+        # 0.6 at the replay world (space technology 3.05)
+        - {at: types.b.levels.bendable.belief, base: 0.905, terms: {powers.USA.tech_space: -0.1}, clamp: [0.05, 0.95]}
+        - {at: types.b.levels.unyielding.belief, base: 0.095, terms: {powers.USA.tech_space: 0.1}, clamp: [0.05, 0.95]}
+      historical:
+        # effort is decided each first quarter (and again after an offer); offers each
+        # quarter once the talks open. Neither side offered terms the other would take
+        # before the US withdrew in 1973. The sequences were generated by scripting those
+        # choices through the engine (E47)
+        choices:
+          USA: [high, direct/no_offer/direct/no_offer*7, high/no_offer*2, withdraw]
+          DRV: [high*2, no_offer, high*2, no_offer/high*2, high/no_offer*2, high*2, no_offer/high*2, high/no_offer*2, high*2, no_offer/high*2, high/no_offer*2, high*2, no_offer/high*2, high]
+          USSR: [high*10]
+          PRC: [high*10]
+        chance: [staying, unyielding, a_gains/b_gains*20]
+        outcome: a_withdrew
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      a_withdrew: {narrative: "The last American combat troops leave Vietnam.", additions: [{flag: us_withdrew_vietnam}]}
+      a_victory: {narrative: "North Vietnam's offensive capacity is broken; the South survives.", additions: [{flag: south_vietnam_secured}]}
+      b_withdrew: {narrative: "Without outside support Hanoi abandons the war in the South.", additions: [{flag: south_vietnam_secured}]}
+      b_victory: {narrative: "Saigon falls while American troops are still fighting.", additions: [{flag: [vietnam_unified_communist, saigon_fell]}]}
+      partition: {narrative: "A negotiated peace leaves Vietnam divided.", additions: [{flag: vietnam_negotiated_peace}]}
+      stalemate: {narrative: "The war ends in exhaustion without a settlement.", additions: [{flag: vietnam_stalemate}]}
+    tags:
+      "USA:direct": {effects: [{add: {path: powers.USA.stability, value: -0.05}}]}
+
+  - id: prague_spring
+    kind: major
+    title: The Prague Spring
+    window: {earliest: 1968-Q3, latest: 1969-Q4}
+    historical_date: 1968-Q3
+    when:
+      all:
+        - compare: {path: regions.eastern_europe.stability, op: lt, value: 0.65}
+        - leader: {power: USSR, in: [brezhnev, khrushchev]}
+    model:
+      family: intervention
+      tier: 2
+      region: eastern_europe
+      config:
+        roles: {patron: USSR, rival: USA}
+        p_strong: 0.5
+        report_accuracy: 0.7
+        values:
+          patron: {reformed: -0.3, crushed: 0.8, defected: -2.5, quagmire: -1.0, clash: -30}
+          rival: {reformed: 0.6, crushed: -0.2, defected: 2.0, quagmire: 0.5, clash: -30}
+        costs: {crackdown: 0.1, intervene: 0.3, back_down: 1.0, condemn: 0.05, covert_aid: 0.3, confront: 1.0}
+        clash_risk: 0.15
+      bindings:
+        - {at: costs.intervene, base: 0.1, terms: {powers.USSR.reformism: 0.8}, clamp: [0.05, 3.0]}
+      historical:
+        choices: {USSR: [intervene], USA: [condemn]}
+        chance: [strong, alarming, crushed]
+        outcome: crushed
+    outcomes:
+      reformed: {narrative: "Socialism with a human face survives in Czechoslovakia.", effects: [{flag: prague_reforms}, {add: {path: regions.eastern_europe.stability, value: -0.05}}]}
+      crushed: {narrative: "Warsaw Pact armies occupy Czechoslovakia; the Brezhnev Doctrine is proclaimed.", effects: [{flag: brezhnev_doctrine}, {relations: {a: PRC, b: USSR, add: -0.2}}, {add: {path: powers.USSR.prestige, value: -0.1}}, {add: {path: regions.eastern_europe.stability, value: 0.1}}]}
+      defected: {narrative: "Czechoslovakia breaks away from the Soviet bloc.", effects: [{flag: czechoslovakia_defected}, {shift_influence: {region: eastern_europe, toward: USA, amount: 0.15}}, {add: {path: powers.USSR.prestige, value: -0.2}}]}
+      quagmire: {narrative: "Occupation forces face a protracted resistance.", effects: [{add: {path: powers.USSR.stability, value: -0.05}}, {flag: czech_resistance}]}
+      clash: {narrative: "NATO and Warsaw Pact forces clash; the war goes nuclear.", effects: [{end_campaign: nuclear_war}]}
+
+  - id: sino_soviet_border_clash
+    kind: major
+    title: The Sino-Soviet border conflict
+    window: {earliest: 1969-Q1, latest: 1971-Q4}
+    historical_date: 1969-Q1
+    when:
+      all:
+        - flag: sino_soviet_split
+        - status: {power: PRC, in: [active]}
+        - compare: {path: powers.PRC.relations.USSR, op: lt, value: -0.4}
+        - regime: {power: PRC, in: [ccp]}
+    model:
+      family: crisis
+      tier: 2
+      region: china_mainland
+      config:
+        roles:
+          USSR: {side: a, values: {a_prevails: 1.0, b_prevails: -1.0, compromise: 0.3, limited_war: -4.0, nuclear_war: -40}, escalation_cost: 0.1}
+          PRC: {side: b, values: {a_prevails: -1.5, b_prevails: 1.0, compromise: 0.3, limited_war: -5.0, nuclear_war: -60}, audience_cost: 0.8, high_resolve_war_factor: 0.5}
+          USA: {side: neutral, values: {a_prevails: -0.5, b_prevails: 0.3, compromise: 0.3, limited_war: 0.0, nuclear_war: -30}}
+        script:
+          - {stage: types, roles: {PRC: {p_high_resolve: 0.6}}}
+          - {stage: move, actor: USSR, options: [{id: border_buildup, kind: escalate, rungs: 1}, {id: massive_retaliation, kind: escalate, rungs: 2}]}
+          - {stage: signal, actor: PRC, options: [{id: quiet_talks, stance: soft}, {id: defiance, stance: hard}]}
+          - {stage: partner, actor: USA, options: [{id: stay_neutral, target: neutral}, {id: warn_moscow, target: a, continue_cost: 0.5}]}
+          - {stage: move, actor: USSR, options: [{id: offer_talks, kind: deal}, {id: hold_pressure, kind: hold}, {id: nuclear_threat, kind: escalate}]}
+          - {stage: respond, actor: PRC}
+          - {stage: move, actor: PRC, options: [{id: concede_border, kind: concede}, {id: stand_firm, kind: hold}]}
+          - {stage: accident, base: 0.01, per_rung: 0.02, nuclear_per_rung: 0.1}
+      bindings:
+        - {at: script.0.roles.PRC.p_high_resolve, base: 0.2, terms: {powers.PRC.hawkishness: 0.6}, clamp: [0.05, 0.95]}
+      historical:
+        choices: {USSR: [border_buildup, offer_talks], PRC: [defiance, accept], USA: [warn_moscow]}
+        chance: [high, calm]
+        outcome: compromise
+    outcomes:
+      a_prevails: {narrative: "China backs down on the Ussuri.", effects: [{add: {path: powers.PRC.prestige, value: -0.1}}, {relations: {a: PRC, b: USSR, add: -0.1}}, {flag: prc_coerced}]}
+      b_prevails: {narrative: "Moscow's pressure fails to move Beijing.", effects: [{add: {path: powers.PRC.prestige, value: 0.1}}, {add: {path: powers.USSR.credibility, value: -0.05}}]}
+      compromise: {narrative: "Kosygin and Zhou meet at Beijing airport; border talks begin.", effects: [{flag: sino_soviet_talks}, {tension: -0.05}]}
+      limited_war: {narrative: "A Sino-Soviet border war erupts.", effects: [{flag: sino_soviet_war}, {add: {path: powers.PRC.stability, value: -0.1}}, {add: {path: powers.PRC.conventional, value: -0.3}}, {add: {path: powers.USSR.conventional, value: -0.3}}, {tension: 0.2}]}
+      nuclear_war: {narrative: "Soviet nuclear strikes on China ignite a nuclear war.", effects: [{end_campaign: nuclear_war}]}
+    tags:
+      "USA:partner=warn_moscow": {effects: [{relations: {a: USA, b: PRC, add: 0.2}}]}
+
+  - id: salt_i
+    kind: major
+    title: SALT I and the ABM Treaty
+    window: {earliest: 1969-Q4, latest: 1972-Q4}
+    historical_date: 1969-Q4
+    when:
+      all:
+        - compare: {path: powers.USSR.nuclear, op: ge, path_rhs: powers.USA.nuclear, scale: 0.6}
+        - compare: {path: tension, op: lt, value: 0.7}
+    # Light review (2026-10-26, EXPERIMENTS.md E48; Garthoff, Detente and Confrontation,
+    # 1994; Newhouse, Cold Dawn, 1973; Kissinger, White House Years, 1979; Kydd, Trust and
+    # Mistrust in International Relations, 2005). Mechanism: arms-race bargaining under the
+    # security dilemma (Jervis, World Politics 30, 1978): each side builds while it talks, and
+    # the programmes are bargaining chips (Safeguard ABM, MIRV).
+    # - Hidden urgency: Moscow's need for a deal grew with the burden of the arms race (the
+    #   weak type, bound to Soviet defence burden); Nixon's with Congress's revolt against
+    #   defence spending in the Vietnam years (bound to US stability).
+    # - From May 1971 Kissinger's back channel with Dobrynin made Washington's offers
+    #   (proposers A).
+    # - Between rounds the arms competition moves the balance (the contest): its odds rise
+    #   with the US lead in missile technology (MIRV).
+    # - The split of the terms tilts credibility: the Jackson amendment attacked the
+    #   interim agreement's Soviet lead in launcher numbers.
+    model:
+      family: bargaining
+      tier: 1
+      payoffs: derived
+      effects: contract
+      cadence: quarterly
+      config:
+        roles: {A: USA, B: USSR}
+        grid: [0.3, 0.4, 0.5, 0.6, 0.7]
+        horizon: 11
+        proposers: A
+        sides:  # values derived; the hand-set ones only validate the raw config
+          A: {discount: 0.97, delay_cost: 0.0, breakdown_value: -0.5, impasse_value: -0.2}
+          B: {discount: 0.97, delay_cost: 0.0, breakdown_value: -0.5, impasse_value: -0.3}
+        breakdown: {base: 0.01, growth: 0.005, max: 0.05}
+        types:
+          A: {prior: {strong: 0.5}, delay_cost: {strong: 0.02, weak: 0.08}}
+          B: {prior: {strong: 0.5}, delay_cost: {strong: 0.02, weak: 0.08}}
+        contest: {initial: 0.5, step: 0.125, win_probability: 0.5}
+      bindings:
+        # Moscow's urgency (the weak type) rises with its defence burden: even at a 20% burden
+        - {at: types.B.prior.strong, base: 1.3, terms: {powers.USSR.burden: -4.0}, clamp: [0.1, 0.9]}
+        # Washington's rises as its domestic stability falls: even at stability 0.6
+        - {at: types.A.prior.strong, base: -0.1, terms: {powers.USA.stability: 1.0}, clamp: [0.1, 0.9]}
+        # the arms competition favours the side ahead in missiles (MIRV)
+        - {at: contest.win_probability, base: 0.5, terms: {powers.USA.tech_missile: 0.1, powers.USSR.tech_missile: -0.1}, clamp: [0.3, 0.7]}
+      historical:
+        choices: {USA: [offer_070, offer_060, offer_060, offer_050], USSR: [reject*10, accept]}
+        chance: [weak, weak, talks_continue, a_gains, talks_continue, b_gains, talks_continue, a_gains, talks_continue, b_gains, talks_continue, a_gains, talks_continue, b_gains, talks_continue, a_gains, talks_continue, b_gains, talks_continue, a_gains, talks_continue, b_gains]
+        outcome: agreement
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      agreement:
+        narrative: "Nixon and Brezhnev sign SALT I and the ABM Treaty in Moscow."
+        additions:
+          - {set: {path: arms_control, value: 0.4}}
+          - {flag: [salt_i, detente]}
+          - {add: {path: powers.USA.credibility, value: 0.2, scale_by: share}}
+          - {add: {path: powers.USSR.credibility, value: 0.2, scale_by: {metric: share, invert: true}}}
+      breakdown: {narrative: "Arms talks collapse amid recriminations.", additions: [{flag: arms_race_unchecked}]}
+      impasse: {narrative: "Arms control talks stall.", additions: [{flag: salt_stalled}]}
+      vetoed: {narrative: "The arms deal is blocked.", additions: [{flag: salt_stalled}]}
+
+  - id: opening_to_china
+    kind: major
+    title: The opening to China
+    window: {earliest: 1971-Q3, latest: 1974-Q4}
+    historical_date: 1971-Q3
+    when:
+      all:
+        - flag: sino_soviet_split
+        - status: {power: PRC, in: [active]}
+        - compare: {path: powers.PRC.relations.USSR, op: lt, value: -0.3}
+        - compare: {path: powers.PRC.relations.USA, op: gt, value: -0.6}
+        - regime: {power: PRC, in: [ccp]}
+    narrative: "Kissinger travels secretly to Beijing."
+    # Light review (2026-10-26, EXPERIMENTS.md E48; MacMillan, Nixon and Mao, 2007;
+    # Kissinger, White House Years, 1979; Dittmer, World Politics 33, 1981; Goldstein, in
+    # Ross and Jiang, Re-examining the Cold War, 2001). Mechanism: the strategic triangle
+    # (Dittmer's "romantic triangle"): after the 1969 border clashes Mao feared Moscow more
+    # than Washington, and tilting toward the weaker threat bought security. Under derived
+    # payoffs China's choice is its own goal change (security, relations, Taiwan), so the
+    # border-war fear enters through relations and threat, not a hand-set affinity.
+    model:
+      family: alignment
+      tier: 1
+      payoffs: derived
+      effects: contract
+      region: china_mainland
+      config:
+        clients:
+          PRC: {affinity: {USA: -0.2, USSR: -0.3}, mode: player, nonaligned: 0.2}
+        patrons:
+          USA: {gain: {PRC: 1.5}, loss: {PRC: 0.5}, offer_cost: {aid: 0.1, aid_guarantee: 0.4, none: 0.0}, offer_value: {aid: 0.6, aid_guarantee: 1.0, none: 0.0}}
+          USSR: {gain: {PRC: 1.5}, loss: {PRC: 1.0}, offer_cost: {aid: 0.2, aid_guarantee: 0.5, none: 0.0}, offer_value: {aid: 0.5, aid_guarantee: 0.9, none: 0.0}}
+      historical:
+        choices: {USA: [aid], USSR: [none], PRC: [aligned_USA]}
+        outcome: aligned_USA
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      # the Shanghai Communique (1972): Washington acknowledged one China and cut its forces
+      # on Taiwan, the price of the opening (MacMillan 2007)
+      aligned_USA: {narrative: "Nixon goes to China; Beijing tilts toward Washington.", additions: [{flag: us_china_rapprochement}, {relations: {a: USA, b: PRC, add: 0.4}}, {relations: {a: PRC, b: USSR, add: -0.1}}, {shift_influence: {region: taiwan, toward: PRC, amount: 0.1}}]}
+      aligned_USSR: {narrative: "Beijing and Moscow patch up their quarrel.", additions: [{flag: sino_soviet_reconciliation}, {unflag: sino_soviet_split}, {relations: {a: PRC, b: USSR, add: 0.4}}]}
+      nonaligned: {narrative: "China keeps both superpowers at arm's length."}

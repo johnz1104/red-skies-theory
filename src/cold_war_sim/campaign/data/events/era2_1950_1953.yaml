@@ -1,0 +1,361 @@
+# Era II, 1950-1953: Korea and the militarization of the Cold War. Illustrative.
+era: 2
+title: Korea (1950-1953)
+events:
+  # ----------------------------------------------------------- leadership
+  - id: churchill_returns
+    kind: leadership
+    title: Churchill returns to Downing Street
+    window: {earliest: 1951-Q4, latest: 1952-Q4}
+    historical_date: 1951-Q4
+    priority: 20
+    when: {leader: {power: UK, in: [attlee]}}
+    narrative: "Winston Churchill returns as Prime Minister."
+    effects: [{leader: churchill}]
+
+  - id: eisenhower_inaugurated
+    kind: leadership
+    title: Eisenhower inaugurated
+    window: {earliest: 1953-Q1, latest: 1953-Q4}
+    historical_date: 1953-Q1
+    priority: 20
+    when: {leader: {power: USA, in: [truman]}}
+    narrative: "Dwight Eisenhower becomes President, promising to end the war in Korea."
+    effects: [{leader: eisenhower}]
+
+  - id: stalin_dies
+    kind: leadership
+    title: Death of Stalin
+    window: {earliest: 1953-Q1, latest: 1953-Q4}
+    historical_date: 1953-Q1
+    priority: 20
+    when: {leader: {power: USSR, in: [stalin]}}
+    narrative: "Stalin dies; a collective leadership under Malenkov takes power in the Kremlin."
+    effects: [{leader: malenkov}, {flag: stalin_dead}, {tension: -0.05}]
+
+  # ------------------------------------------------------------ cutscenes
+  - id: nsc_68
+    kind: cutscene
+    title: NSC-68 and American rearmament
+    window: {earliest: 1950-Q2, latest: 1951-Q4}
+    historical_date: 1950-Q2
+    when: {flag: soviet_bomb}
+    narrative: "NSC-68 calls for a massive build-up of American military power."
+    effects: [{add: {path: powers.USA.burden, value: 0.04}}, {flag: nsc_68}]
+
+  # Korea (review of 2026-10-11/12; EXPERIMENTS.md E28). The war is one sub-game, korean_war;
+  # these cutscenes frame it.
+  - id: kim_presses_again
+    kind: cutscene
+    title: Kim Il-sung asks again
+    once: false
+    when: {all: [{flag: kim_rebuffed}, {quarter_of_year: [2, 4]}]}
+    # Kim asks again every six months after a refusal. His requests: March 1949 (refused),
+    # August-September 1949 (the Politburo refused on 24 September), January 1950 (Stalin
+    # agreed in principle), April 1950 (agreed, if Mao concurred; Weathersby 1993)
+    narrative: "Kim Il-sung presses Moscow again for permission to attack the South."
+    effects: [{unflag: kim_rebuffed}]
+
+  - id: china_in_unified_korea
+    kind: cutscene
+    title: China's say in a Communist Korea
+    when:
+      all:
+        - flag: korea_unified_communist
+        - regime: {power: PRC, in: [ccp]}
+        - status: {power: PRC, in: [active]}
+    # A Korea unified under Kim borders Communist China, which gains a real say beside
+    # Moscow (after 1953 Chinese influence in the North grew; the Volunteers stayed until
+    # 1958). Without it China, as the Communist side's lead, would prefer a 70/30 partition
+    # to unification, against Mao's early-1951 aim of driving the UN out (E38; placeholder)
+    narrative: "Beijing gains a voice in Pyongyang beside Moscow."
+    effects: [{shift_influence: {region: korea, toward: PRC, amount: 0.15}}]
+
+  - id: korean_war_begins
+    kind: cutscene
+    title: The Korean War
+    historical_date: 1950-Q3
+    when: {active_for: {event: korean_war, quarters: 1}}
+    narrative: "Fighting rages across the peninsula as the Korean People's Army drives south and the United Nations Command fights back."
+    effects: [{flag: korean_war}, {add: {path: regions.korea.stability, value: -0.3}}, {tension: 0.1}]
+
+  - id: uk_atomic_bomb
+    kind: cutscene
+    title: The British atomic bomb
+    window: {earliest: 1949-Q1}
+    historical_date: 1952-Q4
+    when: {compare: {path: powers.UK.tech_nuclear, op: ge, value: 1.0}}
+    narrative: "Britain tests an atomic bomb off the Monte Bello Islands."
+    effects: [{flag: uk_bomb}, {add: {path: powers.UK.nuclear, value: 0.3}}, {add: {path: powers.UK.prestige, value: 0.05}}]
+
+  - id: us_h_bomb
+    kind: cutscene
+    title: The American hydrogen bomb
+    window: {earliest: 1950-Q1}
+    historical_date: 1952-Q4
+    when: {compare: {path: powers.USA.tech_nuclear, op: ge, value: 2.0}}
+    narrative: "Ivy Mike: the United States detonates the first thermonuclear device."
+    effects: [{flag: us_h_bomb}, {add: {path: powers.USA.nuclear, value: 1.0}}, {tension: 0.05}]
+
+  - id: soviet_h_bomb
+    kind: cutscene
+    title: The Soviet hydrogen bomb
+    window: {earliest: 1950-Q1}
+    historical_date: 1953-Q3
+    when: {compare: {path: powers.USSR.tech_nuclear, op: ge, value: 2.0}}
+    narrative: "The Soviet Union tests a thermonuclear weapon."
+    effects: [{flag: soviet_h_bomb}, {add: {path: powers.USSR.nuclear, value: 1.0}}, {tension: 0.05}]
+
+  - id: east_german_uprising
+    kind: cutscene
+    title: The East German uprising
+    window: {earliest: 1953-Q2, latest: 1955-Q4}
+    historical_date: 1953-Q2
+    when:
+      all:
+        - fired: stalin_dies
+        - compare: {path: regions.eastern_europe.stability, op: lt, value: 0.6}
+    narrative: "Workers rise in East Berlin; Soviet tanks restore order."
+    effects: [{add: {path: regions.eastern_europe.stability, value: 0.1}}, {add: {path: powers.USSR.prestige, value: -0.05}}, {flag: east_german_uprising_crushed}]
+
+  - id: iran_coup_1953
+    kind: cutscene
+    title: Coup in Iran
+    window: {earliest: 1953-Q2, latest: 1956-Q4}
+    historical_date: 1953-Q3
+    hazard: 0.5
+    when:
+      all:
+        - any:
+            - focus: {power: USA, region: persian_gulf, mode: covert, within_years: 1}
+            - focus: {power: UK, region: persian_gulf, mode: covert, within_years: 1}
+        - no_flag: soviet_client_azerbaijan
+    narrative: "A CIA and MI6 backed coup topples Mosaddegh and restores the Shah."
+    effects: [{shift_influence: {region: persian_gulf, toward: USA, amount: 0.2}}, {flag: iran_shah_restored}, {add: {path: regions.persian_gulf.stability, value: -0.05}}]
+
+  # -------------------------------------------------------- major events
+  # One war in phases (user decisions 2026-10-11/12): Stalin's approval and Mao's assent, the
+  # invasion and US intervention, China's warning and entry as the front nears or crosses the
+  # 38th parallel (red line), and talks while fighting (offers each quarter, alternating, with
+  # Soviet consent). Replaces the opening, the Yalu warning, the war of the hills and the
+  # armistice talks. US resolve (its cost of fighting) and Communist strength (battle edge) are
+  # private; the front holds more often as both sides mass forces (force-to-space ratio).
+  # Shares are the UN side's share of the peninsula (0.5 = the 38th parallel); a settlement's
+  # terms beyond the line (prisoner repatriation) are folded into the share. Sizes are
+  # placeholders; the reasoning is in EXPERIMENTS.md E28.
+  - id: korean_war
+    kind: major
+    title: The Korean War
+    window: {earliest: 1948-Q3, latest: 1991-Q4}
+    historical_date: 1950-Q2
+    once: false
+    when:
+      any:
+        # the first war: Kim asks every six months after a refusal, until 1954
+        - all:
+            - before: 1954-Q4
+            - flag: korea_divided
+            - no_flag: [us_troops_korea, soviet_troops_korea, kim_rebuffed, korean_war_fought]
+        # a renewed war after an armistice without a treaty, once the US garrison has left
+        # and Kim asks again while the US is distracted (kim_seeks_war_*; E31)
+        - all:
+            - flag: kim_asks
+            - any: [{flag: korean_armistice}, {flag: korean_frozen_conflict}]
+            - no_flag: [korea_peace_treaty, us_troops_korea, korean_war]
+    narrative: "With Stalin's approval, the Korean People's Army crosses the 38th parallel."
+    model:
+      family: attrition
+      tier: 1
+      payoffs: derived
+      # effort costs from the dynamics (user decision 2026-10-12): the war's expenses as a
+      # permanent loss of output, casualties as a stability dip counted while it lasts
+      effort_costs: derived
+      cadence: quarterly
+      region: korea
+      optional_roles:
+        # China fights (and assents) only as a Communist state that has won its civil war or
+        # holds the north; otherwise the war is the US and Britain against the USSR
+        PRC: {all: [{status: {power: PRC, in: [active]}}, {regime: {power: PRC, in: [ccp]}}]}
+      config:
+        approval: [USSR, PRC]
+        sponsors:
+          USA: {side: a, capacity: 1.2, direct: true, values: {a_victory: 1.0, b_victory: -2.5, partition: 0.0, a_withdrew: -3.0, b_withdrew: 1.0, stalemate: 0.0, refused: 0.0}}
+          UK: {side: a, capacity: 0.3, direct: true, values: {a_victory: 0.1, b_victory: -0.1, partition: 0.0, a_withdrew: -0.1, b_withdrew: 0.1, stalemate: 0.0, refused: 0.0}}
+          USSR: {side: b, capacity: 0.6, values: {a_victory: -0.5, b_victory: 1.0, partition: 0.0, a_withdrew: 1.0, b_withdrew: -0.5, stalemate: 0.0, refused: 0.0}}
+          # Kim Il-sung (computer-run, hand values): unification above all, the regime's
+          # destruction the worst case, a partition valued by its share. The KPA itself is
+          # the local strength; Kim leads the war until China enters (user decision
+          # 2026-10-13; E38)
+          # A rump state is nearly as bad to Kim as defeat (user decision 2026-10-14, E39): a
+          # partition at his share 0.3 is worth -3.6, at 0.4 -1.8, at the parallel 0. He
+          # rejected MacArthur's surrender demands (1 and 9 October 1950) and appealed for
+          # rescue instead (to Stalin, 29 September; to Mao, 1 October); no one offered terms
+          # at the neck. With a rump worth -1.2 he took the neck line before China entered
+          DPRK: {side: b, capacity: 0.0, cost_scale: 0.2, values: {a_victory: -5.0, b_victory: 3.0, partition: 0.0, a_withdrew: 3.0, b_withdrew: -5.0, stalemate: -0.5, refused: 0.0}, settlement: {base: -9.0, per_share: 18.0}}
+          PRC: {side: b, capacity: 1.2, direct: true, values: {a_victory: -1.0, b_victory: 0.5, partition: 0.0, a_withdrew: 0.5, b_withdrew: -1.0, stalemate: 0.0, refused: 0.0}}
+        # June-October 1950 was Kim's war, backed by Stalin; China led war and talks from its
+        # entry (Peng Dehuai's command; the Chinese delegation at Kaesong and Panmunjom)
+        leads: {a: USA, b: DPRK}
+        lead_on_entry: {PRC: b}
+        local_strength: {a: 0.6, b: 1.2}  # ROK army (no tanks) against the KPA (T-34s, Yaks)
+        initial_control: 0.5
+        step: 0.125
+        victory_threshold: 0.875
+        max_rounds: 16
+        # war weariness: US support for the war fell as casualties mounted (Mueller 1973) and
+        # Eisenhower ran on ending it; China's economy strained under the war. Domestic
+        # support gives out after about 14 quarters of direct effort (placeholder; E36)
+        weariness: {high: 0.035, direct: 0.07}
+        weariness_limit: 1.0
+        offers:
+          grid: [0.3, 0.4, 0.5, 0.6, 0.7]
+          proposer: alternate
+          consent: [USSR]
+          # no talks before a surprise attack: offers open after the invasion's first
+          # quarter (user decision 2026-10-12; E31)
+          opens: 1
+        # the prisoner deadlock as commitments over face (user decision 2026-10-12; E31).
+        # Truman, 7 May 1952: "We will not buy an armistice by turning over human beings for
+        # slaughter or slavery" (voluntary repatriation, about 0.1 beyond the line). Mao would
+        # not accept mass defections: about 14,000 of 21,000 Chinese prisoners later refused
+        # to go home. A lead that settles short of its terms pays the audience cost of its
+        # "<role>:conceded" tag (derived); the PRC's pledge passes to the USSR when it leads.
+        commitments:
+          USA: {at_least: 0.6}
+          PRC: {at_least: 0.5}
+        # Levels a side (E36) with each side's own beliefs where the record shows they
+        # differed from reality (user decisions 2026-10-13; E38). `weight` is nature's
+        # chance, `belief` the other side's prior; all sizes are placeholders.
+        types:
+          # US stakes in Korea. An uncommitted US would not fight for it at all (the Joint
+          # Chiefs' 1947 judgment that Korea had little strategic value): costs x100, so that
+          # even one quarter of war costs more than abandoning Korea (at x40 it still fought a
+          # quarter, then settled; E38). Moscow and Pyongyang thought that the likeliest US: Stalin
+          # told Kim in April 1950 that the changed situation (China's victory, the Soviet
+          # bomb, the treaty) made US intervention unlikely (Weathersby; Goncharov, Lewis and
+          # Xue 1993). In fact Truman committed forces within days.
+          a:
+            levels:
+              resolute: {weight: 0.35, belief: 0.10, cost: 0.6}
+              firm: {weight: 0.30, belief: 0.15, cost: 2.5}
+              wavering: {weight: 0.25, belief: 0.25, cost: 8.0}
+              uncommitted: {weight: 0.10, belief: 0.50, cost: 100.0}
+          # Communist strength. Washington underrated it: surprised in June 1950, it expected
+          # victory after Inchon ("home by Christmas")
+          b:
+            levels:
+              strong: {weight: 0.30, belief: 0.15, strength: 1.3}
+              steady: {weight: 0.40, belief: 0.35, strength: 1.05}
+              weak: {weight: 0.30, belief: 0.50, strength: 0.8}
+          # China's stakes in defending its border ("lips and teeth"). Mao overrode a divided
+          # Politburo in October 1950. Washington judged full-scale intervention not probable
+          # (the October 1950 estimates; MacArthur's "very little" at Wake Island, 15 October)
+          # and discounted Zhou's 3 October warning through Panikkar
+          PRC:
+            levels:
+              committed: {weight: 0.70, belief: 0.20, cost: 1.0}
+              uncommitted: {weight: 0.30, belief: 0.80, cost: 10.0}
+          # Stalin's hold-out as Moscow's private intent (user decision 2026-10-14, E39): its
+          # gain from a war China fights (proxy_gain, below) counts in full if it holds out
+          # and not at all if it would settle. Seen by Moscow alone: Mao in 1950 and
+          # Washington did not foresee that Stalin would keep the war going for two years,
+          # and learn it from his vetoes (August-September 1952: hold firm on the prisoners).
+          # Placeholders
+          USSR:
+            private: true
+            levels:
+              holds_out: {weight: 0.8, belief: 0.1, proxy: 1.0}
+              settles: {weight: 0.2, belief: 0.9, proxy: 0.0}
+        mobility: {space: 13.0, sharpness: 5.0}
+        # US ground forces arrived piecemeal in July 1950 (Task Force Smith, the 24th
+        # Division); the Pusan perimeter held only in August, and the Commonwealth brigade
+        # came in August-September (user decision 2026-10-12; placeholder). China massed
+        # the Northeast Border Defense Army in Manchuria from July 1950 and struck in
+        # strength by surprise on 25 October and 25 November: it arrives in full (user
+        # decision 2026-10-14, E39)
+        deployment: {USA: 0.3, UK: 0.3, PRC: 1.0}
+        red_lines:
+          PRC: {above: 0.5, audience_cost: 0.2}
+      bindings:
+        # Moscow's belief in a US that would not fight. In September 1949, after the bomb
+        # test, the Politburo still expected US intervention and refused; by April 1950
+        # China's victory and the treaty (with the bomb) had changed Stalin's mind. So the
+        # belief follows China's victory (Communist influence over the mainland): about 0.05
+        # in 1949, 0.5 in 1950 (E38). The war is possible only once the US garrison has gone.
+        - {at: types.a.levels.uncommitted.belief, base: -0.25, terms: {regions.china_mainland.influence.PRC: 1.3}, clamp: [0.05, 0.6]}
+        # The KPA was not superior in 1949 (the Politburo's first reason for refusing). It
+        # gained the Korean divisions of the PLA (from July 1949 into 1950) and Soviet tanks
+        # in spring 1950 as the civil war ended (E38; placeholder sizes)
+        - {at: local_strength.b, base: 0.6, terms: {regions.china_mainland.influence.PRC: 1.0}, clamp: [0.6, 1.2]}
+        - {at: sponsors.USA.capacity, base: 0.4, terms: {powers.USA.conventional: 0.25}, clamp: [0.6, 2.0]}
+        - {at: sponsors.PRC.capacity, base: 0.4, terms: {powers.PRC.conventional: 0.5}, clamp: [0.4, 2.0]}
+        # Stalin's hold-out (user decision 2026-10-13, E39): a war that China fights against
+        # the US was worth something to Moscow each quarter. Stalin to Mao, 5 June 1951: a
+        # drawn-out war lets the Chinese troops study modern warfare and "shakes up the
+        # Truman regime"; to Zhou, 20 August 1952: "this war is getting on America's
+        # nerves" (Weathersby 1993: Stalin was the main obstacle to an armistice). His
+        # successors resolved to end it on 19 March 1953. Bound to the Soviet leader's
+        # hawkishness: Stalin (0.8) 0.1 a quarter, Andropov 0.05, Khrushchev, Brezhnev and
+        # Malenkov 0. A leader change re-binds the running war. The gain needs a sponsor
+        # fighting direct on Moscow's side, so a war of the KPA alone earns none
+        - {at: sponsors.USSR.proxy_gain, base: -0.3, terms: {powers.USSR.hawkishness: 0.5}, clamp: [0.0, 0.1]}
+        # China's pledge on the prisoners weighs as its patron does (user decision 2026-10-14,
+        # E39): under Stalin, conceding meant defying Moscow's line (he urged Zhou to hold firm
+        # in August-September 1952); after his death conceding became bloc policy (the Soviet
+        # Council of Ministers' resolution of 19 March 1953; Zhou's offer of 30 March). Stalin
+        # (0.8) 1.0, Khrushchev 0.67, Malenkov 0.33 (Weathersby 1993; Chen Jian 2001; Shen
+        # Zhihua 2012). Re-bound at a leader change; skipped when China is not in the war
+        - {at: commitments.PRC.scale, base: -0.33, terms: {powers.USSR.hawkishness: 1.67}, clamp: [0.2, 1.0]}
+      historical:
+        instances:
+          - {before: 1950-Q2, choices: {USSR: [refuse]}}
+          # 1950-Q2 invasion (no talks); Q3 Inchon; Q4 China warns, the UN crosses, China
+          # enters; 1951-Q1 China rejects the UN's ceasefire terms; talks from July 1951;
+          # 1952-Q1 Truman commits to voluntary repatriation, 1952-Q2 Mao refuses it; 1952-Q3
+          # Kim and Zhou would accept the UN's terms but Stalin says hold out (veto); after
+          # Stalin's death the Communist side concedes: the armistice of July 1953 at 0.6
+          - before: 1955-Q1
+            choices:
+              USA: [direct, hold_off, no_offer, direct, hold_off, direct, hold_off, offer_050, direct, hold_off, direct, hold_off, offer_060, direct, hold_off, reject, direct, commit, offer_060, direct, reject, direct, offer_060, direct, reject, direct, offer_060, direct, reject, direct, offer_060]
+              UK: [high, direct*12]
+              USSR: [approve, high*9, veto, high*4, ratify]
+              # Kim leads until China's entry in 1950-Q4 (no offer in 1950-Q4)
+              DPRK: [low, low, no_offer, low*11]
+              PRC: [approve, silent, low, silent, low, warn, direct, hold_off, reject, direct, hold_off, no_offer, direct, hold_off, reject, direct, hold_off, offer_050, direct, hold_off, reject, direct, commit, offer_050, direct, accept, direct, offer_050, direct, reject, direct, offer_050, direct, accept]
+            chance: [resolute, strong, committed, holds_out, b_gains, a_gains, a_gains, b_gains, hold*9]
+          # later requests: refused (Beijing turned Kim down in April 1975)
+          - {choices: {USSR: [refuse]}}
+        outcome: partition
+    outcomes:
+      refused: {narrative: "Moscow refuses Kim Il-sung's request to attack the South.", effects: [{flag: kim_rebuffed}, {unflag: kim_asks}]}
+      # US credibility moves with the line at 0.4 per unit of the peninsula, the rate of the
+      # defeat (b_victory: -0.15 over 0.375): unification gains as much, and a settlement's
+      # terms count like ground (user decision 2026-10-12; EXPERIMENTS.md E30)
+      a_victory: {narrative: "United Nations forces reach the Yalu and hold; Korea is unified under Seoul.", effects: [{set_controller: {region: korea, to: USA}}, {flag: [korea_unified_west, korean_war_fought]}, {unflag: korean_war}, {add: {path: powers.USA.credibility, value: 0.15}}]}
+      b_withdrew: {narrative: "Pyongyang's backers abandon the war; Korea is unified under Seoul.", effects: [{set_controller: {region: korea, to: USA}}, {flag: [korea_unified_west, korean_war_fought]}, {unflag: korean_war}, {add: {path: powers.USA.credibility, value: 0.15}}]}
+      b_victory: {narrative: "Korea is unified under Kim Il-sung.", effects: [{set_controller: {region: korea, to: USSR}}, {flag: [korea_unified_communist, korean_war_fought]}, {unflag: korean_war}, {add: {path: powers.USA.credibility, value: -0.15}}]}
+      a_withdrew: {narrative: "The United States abandons South Korea.", effects: [{set_controller: {region: korea, to: USSR}}, {flag: [korea_unified_communist, korean_war_fought]}, {unflag: korean_war}, {add: {path: powers.USA.credibility, value: -0.2}}]}
+      # US forces stay at an armistice or a frozen front (the October 1953 defence treaty);
+      # us_korea_troops then asks each year whether they stay
+      partition: {narrative: "An armistice is signed at Panmunjom; Korea stays divided along the line of contact.", effects: [{flag: [korean_armistice, korean_war_fought, us_troops_korea]}, {unflag: korean_war}, {shift_influence: {region: korea, toward: USA, amount: 0.5, scale_by: share_change}}, {add: {path: powers.USA.credibility, value: 0.4, scale_by: share_change}}, {tension: -0.1}]}
+      stalemate: {narrative: "The fighting dies down without an armistice; the front hardens into an armed truce.", effects: [{flag: [korean_frozen_conflict, korean_war_fought, us_troops_korea]}, {unflag: korean_war}]}
+    tags:
+      "PRC:direct": {narrative: "Chinese People's Volunteers fought in Korea.", effects: [{shift_influence: {region: korea, toward: PRC, amount: 0.1}}, {relations: {a: USA, b: PRC, add: -0.3}}, {tension: 0.05}]}
+      "PRC:bluffed": {effects: [{add: {path: powers.PRC.credibility, value: -0.1}}]}
+      "USSR:vetoed": {effects: [{relations: {a: PRC, b: USSR, add: -0.05}}]}
+      # Refusing Stalin days after the February 1950 treaty would have strained the alliance
+      # China depended on: Soviet credits and arms, and support for the Taiwan operation.
+      # But Stalin's cable of 14 May 1950 left the final say to Mao, so the strain is modest:
+      # sized so Mao's choice turns on Chinese strength (user decision 2026-10-12; E33)
+      "PRC:refused": {effects: [{relations: {a: PRC, b: USSR, add: -0.02}}]}
+      # backing down from a public pledge on the prisoners (placeholder size, as PRC:bluffed)
+      "USA:conceded": {narrative: "Washington gave up voluntary repatriation.", effects: [{add: {path: powers.USA.credibility, value: -0.1}}]}
+      "PRC:conceded": {narrative: "Beijing accepted voluntary repatriation under a neutral commission.", effects: [{add: {path: powers.PRC.credibility, value: -0.1}}]}
+      "USSR:conceded": {effects: [{add: {path: powers.USSR.credibility, value: -0.1}}]}
+      # Abandoning an ally in war (user decision 2026-10-14, E39; placeholder sizes). Attlee
+      # and Bevin sent the Commonwealth brigade to keep Washington engaged in Europe; quitting
+      # the coalition would have strained the alliance. Moscow's arms, advisers and (from
+      # November 1950) MiG units never stopped; abandoning its client would have cost its
+      # standing as the camp's leader. The derived cost is paid on withdrawing
+      "UK:withdrew": {effects: [{relations: {a: USA, b: UK, add: -0.1}}]}
+      "USSR:withdrew": {effects: [{add: {path: powers.USSR.credibility, value: -0.1}}]}

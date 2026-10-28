@@ -1,0 +1,67 @@
+# Historical strategy rule tables used by HistoricalPolicy (and NPC powers).
+# Each row covers an inclusive range of years: posture, region focus
+# [region, aid|covert] and a diplomatic initiative [engage|pressure, power].
+# Rows are coarse, illustrative summaries of each power's grand strategy.
+
+USA:
+  - {from: 1946, to: 1949, posture: balanced, focus: [western_europe, aid], diplomacy: [pressure, USSR]}
+  - {from: 1950, to: 1951, posture: conventional, focus: [korea, aid], diplomacy: [pressure, USSR]}
+  - {from: 1952, to: 1953, posture: conventional, focus: [persian_gulf, covert], diplomacy: [pressure, USSR]}
+  - {from: 1954, to: 1954, posture: nuclear, focus: [latin_america, covert], diplomacy: [pressure, PRC]}
+  - {from: 1955, to: 1957, posture: nuclear, focus: [middle_east, aid], diplomacy: [pressure, USSR]}
+  - {from: 1958, to: 1960, posture: science, focus: [caribbean, covert], diplomacy: [pressure, USSR]}
+  - {from: 1961, to: 1961, posture: science, focus: [caribbean, covert], diplomacy: [pressure, USSR]}
+  - {from: 1962, to: 1963, posture: science, focus: [latin_america, aid], diplomacy: [engage, USSR]}
+  - {from: 1964, to: 1968, posture: conventional, focus: [indochina, aid], diplomacy: [engage, USSR]}
+  - {from: 1969, to: 1971, posture: balanced, focus: [indochina, aid], diplomacy: [engage, PRC]}
+  - {from: 1972, to: 1972, posture: balanced, focus: [indochina, aid], diplomacy: [engage, USSR]}
+  - {from: 1973, to: 1973, posture: economy, focus: [latin_america, covert], diplomacy: [engage, USSR]}
+  - {from: 1974, to: 1978, posture: economy, focus: [middle_east, aid], diplomacy: [engage, PRC]}
+  - {from: 1979, to: 1980, posture: balanced, focus: [afghanistan, covert], diplomacy: [pressure, USSR]}
+  - {from: 1981, to: 1985, posture: nuclear, focus: [afghanistan, covert], diplomacy: [pressure, USSR]}
+  - {from: 1986, to: 1988, posture: balanced, focus: [afghanistan, covert], diplomacy: [engage, USSR]}
+  - {from: 1989, to: 1991, posture: economy, focus: [eastern_europe, aid], diplomacy: [engage, USSR]}
+
+USSR:
+  - {from: 1946, to: 1948, posture: nuclear, focus: [eastern_europe, covert], diplomacy: [engage, PRC]}
+  - {from: 1949, to: 1950, posture: nuclear, focus: [korea, aid], diplomacy: [engage, PRC]}
+  - {from: 1951, to: 1955, posture: nuclear, focus: [eastern_europe, aid], diplomacy: [engage, PRC]}
+  - {from: 1956, to: 1957, posture: science, focus: [middle_east, aid], diplomacy: [pressure, USA]}
+  - {from: 1958, to: 1962, posture: science, focus: [caribbean, aid], diplomacy: [pressure, PRC]}
+  - {from: 1963, to: 1964, posture: nuclear, focus: [indochina, aid], diplomacy: [engage, USA]}
+  - {from: 1965, to: 1971, posture: nuclear, focus: [indochina, aid], diplomacy: [pressure, PRC]}
+  - {from: 1972, to: 1974, posture: nuclear, focus: [middle_east, aid], diplomacy: [engage, USA]}
+  - {from: 1975, to: 1977, posture: nuclear, focus: [central_africa, aid], diplomacy: [engage, USA]}
+  - {from: 1978, to: 1979, posture: nuclear, focus: [horn_of_africa, aid], diplomacy: [engage, USA]}
+  - {from: 1980, to: 1985, posture: nuclear, focus: [afghanistan, aid], diplomacy: [pressure, USA]}
+  - {from: 1986, to: 1988, posture: economy, focus: [afghanistan, aid], diplomacy: [engage, USA]}
+  - {from: 1989, to: 1991, posture: economy, diplomacy: [engage, USA]}
+
+PRC:
+  - {from: 1950, to: 1953, posture: conventional, focus: [korea, aid], diplomacy: [engage, USSR]}
+  - {from: 1954, to: 1957, posture: conventional, focus: [indochina, aid], diplomacy: [engage, USSR]}
+  - {from: 1958, to: 1960, posture: economy, focus: [taiwan, covert], diplomacy: [pressure, USSR]}
+  - {from: 1961, to: 1968, posture: nuclear, focus: [indochina, aid], diplomacy: [pressure, USSR]}
+  - {from: 1969, to: 1976, posture: nuclear, focus: [indochina, aid], diplomacy: [engage, USA]}
+  - {from: 1977, to: 1979, posture: economy, focus: [indochina, covert], diplomacy: [engage, USA]}
+  - {from: 1980, to: 1988, posture: economy, focus: [afghanistan, covert], diplomacy: [engage, USA]}
+  - {from: 1989, to: 1991, posture: economy, diplomacy: [engage, USSR]}
+
+UK:
+  - {from: 1946, to: 1947, posture: economy, focus: [mediterranean, aid], diplomacy: [engage, USA]}
+  - {from: 1948, to: 1950, posture: economy, focus: [southeast_asia, aid], diplomacy: [engage, USA]}
+  - {from: 1951, to: 1953, posture: balanced, focus: [persian_gulf, covert], diplomacy: [engage, USA]}
+  - {from: 1954, to: 1956, posture: balanced, focus: [middle_east, aid], diplomacy: [engage, FRA]}
+  - {from: 1957, to: 1960, posture: nuclear, focus: [southeast_asia, aid], diplomacy: [engage, USA]}
+  - {from: 1961, to: 1967, posture: nuclear, focus: [middle_east, aid], diplomacy: [engage, USA]}
+  - {from: 1968, to: 1979, posture: economy, focus: [western_europe, aid], diplomacy: [engage, FRA]}
+  - {from: 1980, to: 1984, posture: balanced, focus: [afghanistan, covert], diplomacy: [engage, USA]}
+  - {from: 1985, to: 1991, posture: balanced, focus: [western_europe, aid], diplomacy: [engage, USSR]}
+
+FRA:
+  - {from: 1946, to: 1953, posture: conventional, focus: [indochina, aid], diplomacy: [engage, USA]}
+  - {from: 1954, to: 1957, posture: conventional, focus: [north_africa, aid], diplomacy: [engage, UK]}
+  - {from: 1958, to: 1962, posture: nuclear, focus: [north_africa, aid], diplomacy: [pressure, USA]}
+  - {from: 1963, to: 1968, posture: nuclear, focus: [central_africa, aid], diplomacy: [pressure, USA]}
+  - {from: 1969, to: 1980, posture: economy, focus: [central_africa, aid], diplomacy: [engage, UK]}
+  - {from: 1981, to: 1991, posture: balanced, focus: [western_europe, aid], diplomacy: [engage, USA]}

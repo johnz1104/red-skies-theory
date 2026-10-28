@@ -1,0 +1,382 @@
+# Era VI, 1985-1991: Gorbachev, the revolutions of 1989 and the Soviet collapse. Illustrative.
+era: 6
+title: The endgame (1985-1991)
+events:
+  # ----------------------------------------------------------- leadership
+  - id: gorbachev_selected
+    kind: leadership
+    title: Gorbachev becomes General Secretary
+    window: {earliest: 1985-Q1, latest: 1986-Q4}
+    historical_date: 1985-Q1
+    priority: 30
+    excludes: [hardliner_selected]
+    when:
+      all:
+        - leader: {power: USSR, in: [chernenko]}
+        - any:
+            - compare: {path: powers.USSR.growth, op: lt, value: 0.03}
+            - compare: {path: powers.USSR.stability, op: lt, value: 0.6}
+    narrative: "Facing stagnation, the Politburo chooses the reformer Mikhail Gorbachev."
+    effects: [{leader: gorbachev}, {flag: perestroika}]
+
+  - id: hardliner_selected
+    kind: leadership
+    title: A hardliner succeeds Chernenko
+    window: {earliest: 1985-Q1, latest: 1986-Q4}
+    priority: 25
+    when: {leader: {power: USSR, in: [chernenko]}}
+    narrative: "With the economy holding up, the Politburo picks a cautious hardliner."
+    effects: [{leader: soviet_hardliner}]
+
+  - id: bush_inaugurated
+    kind: leadership
+    title: Bush inaugurated
+    window: {earliest: 1989-Q1, latest: 1989-Q4}
+    historical_date: 1989-Q1
+    priority: 20
+    when: {leader: {power: USA, in: [reagan]}}
+    narrative: "George H. W. Bush becomes President."
+    effects: [{leader: bush}]
+
+  - id: major_succeeds
+    kind: leadership
+    title: Major succeeds Thatcher
+    window: {earliest: 1990-Q4, latest: 1991-Q4}
+    historical_date: 1990-Q4
+    priority: 20
+    when: {leader: {power: UK, in: [thatcher]}}
+    narrative: "Thatcher is forced out; John Major becomes Prime Minister."
+    effects: [{leader: major}]
+
+  # ------------------------------------------------------------ cutscenes
+  - id: oil_price_collapse
+    kind: cutscene
+    title: The oil price collapse
+    window: {earliest: 1986-Q1, latest: 1986-Q4}
+    historical_date: 1986-Q1
+    narrative: "Oil prices collapse, gutting Soviet hard-currency earnings."
+    effects: [{flag: oil_glut}, {add: {path: powers.USSR.economy, value: -0.05}}, {add: {path: powers.USSR.growth, value: -0.01}}]
+
+  - id: chernobyl
+    kind: cutscene
+    title: Chernobyl
+    window: {earliest: 1986-Q2, latest: 1986-Q4}
+    historical_date: 1986-Q2
+    narrative: "Reactor No. 4 at Chernobyl explodes."
+    effects: [{flag: chernobyl}, {add: {path: powers.USSR.stability, value: -0.05}}]
+
+  - id: glasnost
+    kind: cutscene
+    title: Glasnost
+    window: {earliest: 1986-Q2, latest: 1988-Q4}
+    historical_date: 1986-Q2
+    when: {leader: {power: USSR, in: [gorbachev]}}
+    narrative: "Gorbachev's glasnost opens Soviet society to criticism."
+    effects: [{flag: glasnost}, {add: {path: regions.eastern_europe.stability, value: -0.1}}, {add: {path: powers.USSR.stability, value: -0.05}}, {tension: -0.05}]
+
+  - id: perestroika_dislocation
+    kind: cutscene
+    title: The crisis of perestroika
+    window: {earliest: 1988-Q1, latest: 1990-Q4}
+    historical_date: 1988-Q1
+    when: {leader: {power: USSR, in: [gorbachev]}}
+    narrative: "Half-reformed planning breaks down; shortages spread and nationalities stir."
+    effects: [{flag: perestroika_crisis}, {add: {path: powers.USSR.growth, value: -0.03}}, {add: {path: powers.USSR.stability, value: -0.1}}, {add: {path: regions.eastern_europe.stability, value: -0.1}}]
+
+  - id: afghan_withdrawal
+    kind: cutscene
+    title: The last Soviet soldier leaves Afghanistan
+    window: {earliest: 1980-Q1}
+    historical_date: 1988-Q2
+    when: {outcome: {event: soviet_afghan_war, in: [a_withdrew, b_victory]}}
+    narrative: "The last Soviet troops cross the Friendship Bridge out of Afghanistan."
+    effects: [{flag: afghan_withdrawal_complete}]
+
+  - id: fall_of_berlin_wall
+    kind: cutscene
+    title: The fall of the Berlin Wall
+    window: {earliest: 1989-Q1, latest: 1991-Q4}
+    historical_date: 1989-Q4
+    when: {outcome: {event: revolutions_of_1989, in: [defected, reformed]}}
+    narrative: "East Germans pour through the opened Berlin Wall."
+    effects: [{flag: berlin_wall_fell}, {unflag: berlin_wall}, {shift_influence: {region: eastern_europe, toward: USA, amount: 0.3}}, {shift_influence: {region: germany, toward: USA, amount: 0.15}}, {tension: -0.15}]
+
+  - id: baltic_independence
+    kind: cutscene
+    title: The Baltic states declare independence
+    window: {earliest: 1990-Q1, latest: 1991-Q4}
+    historical_date: 1990-Q1
+    when:
+      all:
+        - leader: {power: USSR, in: [gorbachev]}
+        - compare: {path: powers.USSR.stability, op: lt, value: 0.6}
+    narrative: "Lithuania declares independence; the Union begins to unravel."
+    effects: [{flag: baltic_independence}, {add: {path: powers.USSR.stability, value: -0.1}}]
+
+  - id: gulf_war
+    kind: cutscene
+    title: The Gulf War
+    window: {earliest: 1990-Q3, latest: 1991-Q2}
+    historical_date: 1990-Q3
+    when: {compare: {path: tension, op: lt, value: 0.5}}
+    narrative: "Iraq invades Kuwait; a US-led coalition with Soviet acquiescence drives it out."
+    effects: [{flag: gulf_war}, {shift_influence: {region: persian_gulf, toward: USA, amount: 0.2}}, {relations: {a: USA, b: USSR, add: 0.1}}]
+
+  - id: ussr_dissolved
+    kind: cutscene
+    title: The dissolution of the Soviet Union
+    window: {earliest: 1985-Q1}
+    historical_date: 1991-Q4
+    priority: 50
+    when:
+      any:
+        - outcome: {event: august_coup, in: [defected, quagmire]}
+        - compare: {path: powers.USSR.stability, op: lt, value: 0.12}
+    narrative: "The Soviet flag is lowered over the Kremlin; the Soviet Union ceases to exist."
+    # the bloc dissolves with the Union: Soviet influence everywhere falls to neutral (troops
+    # leave Eastern Europe and Germany, client states lose their patron), so the goals
+    # measure what the end of the Cold War means (user decision 2026-10-12; E33)
+    effects:
+      - {flag: ussr_dissolved}
+      - {status: {power: USSR, to: eliminated}}
+      - {shift_influence: {region: western_europe, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: germany, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: eastern_europe, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: mediterranean, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: middle_east, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: persian_gulf, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: north_africa, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: south_asia, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: afghanistan, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: china_mainland, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: taiwan, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: korea, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: japan, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: indochina, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: southeast_asia, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: latin_america, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: caribbean, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: central_africa, toward: USSR, amount: -1.0}}
+      - {shift_influence: {region: horn_of_africa, toward: USSR, amount: -1.0}}
+      - {end_campaign: ussr_dissolved}
+
+  # -------------------------------------------------------- major events
+  - id: reykjavik_inf
+    kind: major
+    title: Reykjavik and the INF Treaty
+    window: {earliest: 1986-Q4, latest: 1989-Q4}
+    historical_date: 1986-Q4
+    when:
+      all:
+        - leader: {power: USSR, in: [gorbachev]}
+        - compare: {path: tension, op: lt, value: 0.7}
+    model:
+      family: bargaining
+      tier: 2
+      cadence: quarterly
+      config:
+        roles: {A: USA, B: USSR}
+        grid: [0.25, 0.5, 0.75, 1.0]
+        horizon: 5
+        first_proposer: A
+        surplus: 2.0
+        sides:
+          A: {discount: 0.97, delay_cost: 0.02, breakdown_value: -0.5, impasse_value: 0.0}
+          B: {discount: 0.95, delay_cost: 0.05, breakdown_value: -0.8, impasse_value: -0.3}
+        breakdown: {base: 0.02, growth: 0.0, max: 0.05}
+        consent:
+          - {role: UK, base: 0.3, per_share: -0.2, veto_value: 0.0}
+          - {role: FRA, base: 0.3, per_share: -0.2, veto_value: 0.0}
+      bindings:
+        - {at: sides.B.impasse_value, base: 0.0, terms: {powers.USSR.burden: -1.5}, clamp: [-1.0, 0.0]}
+      historical:
+        choices: {USA: [offer_100, reject, offer_100, reject, offer_100], USSR: [reject, offer_050, reject, offer_075, accept], UK: [ratify], FRA: [ratify]}
+        chance: [talks_continue*4]
+        outcome: agreement
+    outcomes:
+      agreement: {narrative: "Reagan and Gorbachev sign the INF Treaty, eliminating a whole class of nuclear weapons.", effects: [{flag: inf_treaty}, {add: {path: arms_control, value: 0.3}}, {tension: -0.15}, {relations: {a: USA, b: USSR, add: 0.2}}, {add: {path: powers.USSR.burden, value: -0.02}}]}
+      breakdown: {narrative: "Talks collapse over SDI.", effects: [{tension: 0.1}, {flag: inf_collapse}]}
+      impasse: {narrative: "Arms talks stall.", effects: [{flag: inf_stalled}]}
+      vetoed: {narrative: "European allies block the deal.", effects: [{flag: inf_stalled}]}
+
+  - id: tiananmen
+    kind: major
+    title: Tiananmen Square
+    window: {earliest: 1989-Q2, latest: 1990-Q4}
+    historical_date: 1989-Q2
+    when:
+      all:
+        - status: {power: PRC, in: [active]}
+        - flag: reform_and_opening
+        - compare: {path: powers.PRC.stability, op: lt, value: 0.9}
+        - regime: {power: PRC, in: [ccp]}
+    narrative: "Students occupy Tiananmen Square demanding political reform."
+    model:
+      family: intervention
+      tier: 2
+      region: china_mainland
+      config:
+        roles: {patron: PRC, rival: USA}
+        p_strong: 0.5
+        report_accuracy: 0.7
+        values:
+          patron: {reformed: -0.5, crushed: 0.5, defected: -5.0, quagmire: -1.5, clash: -15}
+          rival: {reformed: 1.0, crushed: -0.3, defected: 1.5, quagmire: 0.3, clash: -15}
+        costs: {crackdown: 0.2, intervene: 0.5, back_down: 1.0, condemn: 0.05, covert_aid: 0.3, confront: 0.8}
+        clash_risk: 0.05
+      historical:
+        choices: {PRC: [intervene], USA: [condemn]}
+        chance: [strong, alarming, crushed]
+        outcome: crushed
+    outcomes:
+      crushed: {narrative: "The army clears Tiananmen Square by force.", effects: [{flag: tiananmen_crackdown}, {add: {path: powers.PRC.prestige, value: -0.1}}, {relations: {a: USA, b: PRC, add: -0.2}}]}
+      reformed: {narrative: "Beijing opens a dialogue and begins political reform.", effects: [{flag: chinese_political_reform}, {add: {path: powers.PRC.stability, value: -0.05}}]}
+      defected: {narrative: "The Communist Party loses control of China.", effects: [{flag: ccp_collapse}, {add: {path: powers.PRC.stability, value: -0.4}}]}
+      quagmire: {narrative: "Unrest spreads across Chinese cities.", effects: [{add: {path: powers.PRC.stability, value: -0.2}}]}
+      clash: {narrative: "A Sino-American confrontation erupts.", effects: [{tension: 0.3}, {relations: {a: USA, b: PRC, add: -0.5}}]}
+
+  - id: revolutions_of_1989
+    kind: major
+    title: The revolutions of 1989
+    window: {earliest: 1989-Q3, latest: 1991-Q2}
+    historical_date: 1989-Q3
+    when:
+      all:
+        - compare: {path: regions.eastern_europe.stability, op: lt, value: 0.6}
+        - any:
+            - leader: {power: USSR, in: [gorbachev]}
+            - compare: {path: powers.USSR.stability, op: lt, value: 0.45}
+    narrative: "Poland elects Solidarity; Hungary opens its border; crowds fill the streets of Leipzig and Prague."
+    # Light review (2026-10-26, EXPERIMENTS.md E48; Sarotte, 1989, 2009, and The Collapse,
+    # 2014; Kramer, J. Cold War Studies 5, 2003; Kotkin, Uncivil Society, 2009; Kuran, World
+    # Politics 44, 1991; Lohmann, World Politics 47, 1994). Mechanism: a tipping cascade:
+    # each country's crowds grew as others fell unpunished, so the movement's strength
+    # rises as the region's stability falls (bound), and Moscow's cost of force rises with
+    # Gorbachev's reformism (bound). Bush's caution ("I'm not going to dance on the Wall")
+    # is Washington's choice as the rival.
+    model:
+      family: intervention
+      tier: 1
+      payoffs: derived
+      effects: contract
+      region: eastern_europe
+      config:
+        clash_risk: 0.15
+        costs: {back_down: 1.0, condemn: 0.05, confront: 1.0, covert_aid: 0.2, crackdown: 0.3, intervene: 1.0}
+        p_strong: 0.7
+        report_accuracy: 0.8
+        roles: {patron: USSR, rival: USA}
+        values:
+          patron: {clash: -30, crushed: 0.3, defected: -2.0, quagmire: -2.0, reformed: -0.5}
+          rival: {clash: -30, crushed: -0.5, defected: 2.5, quagmire: 0.5, reformed: 0.8}
+      bindings:
+        - {at: p_strong, base: 1.0, terms: {regions.eastern_europe.stability: -0.8}, clamp: [0.1, 0.95]}
+        - {at: costs.intervene, base: 0.2, terms: {powers.USSR.reformism: 2.5}, clamp: [0.05, 4.0]}
+        - {at: costs.crackdown, base: 0.1, terms: {powers.USSR.reformism: 1.5}, clamp: [0.05, 3.0]}
+      historical:
+        choices: {USSR: [accommodate], USA: [abstain]}
+        chance: [strong, alarming, defected]
+        outcome: defected
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      defected: {narrative: "The Sinatra Doctrine: Moscow lets Eastern Europe go its own way.", additions: [{flag: eastern_bloc_collapsed}]}
+      reformed: {narrative: "Reform communists negotiate a managed transition inside the bloc.", additions: [{flag: eastern_bloc_reformed}]}
+      # a crackdown would have brought Western sanctions, as Tiananmen did that June
+      crushed: {narrative: "Soviet and local forces crush the uprisings.", additions: [{flag: crackdown_1989}, {tension: 0.2}]}
+      quagmire: {narrative: "Eastern Europe descends into protracted unrest and repression.", additions: [{flag: bloc_unrest}]}
+      # judgment: a US-Soviet clash in Central Europe is taken to escalate to nuclear war
+      clash: {narrative: "The bloc's collapse triggers war in Europe.", additions: [{end_campaign: nuclear_war}]}
+
+  - id: german_reunification
+    kind: major
+    title: German reunification
+    window: {earliest: 1990-Q1, latest: 1991-Q3}
+    historical_date: 1990-Q1
+    when: {flag: berlin_wall_fell}
+    model:
+      family: bargaining
+      tier: 2
+      cadence: quarterly
+      region: germany
+      config:
+        roles: {A: USA, B: USSR}
+        grid: [0.0, 0.25, 0.5, 0.75, 1.0]
+        horizon: 4
+        first_proposer: A
+        surplus: 2.0
+        sides:
+          A: {discount: 0.95, delay_cost: 0.05, breakdown_value: -3.0, impasse_value: -0.5}
+          B: {discount: 0.9, delay_cost: 0.1, breakdown_value: -3.0, impasse_value: -0.2}
+        breakdown: {base: 0.01, growth: 0.0, max: 0.05}
+        consent:
+          - {role: UK, base: -0.1, per_share: 0.4, veto_value: 0.0}
+          - {role: FRA, base: -0.05, per_share: 0.3, veto_value: 0.0}
+      historical:
+        choices: {USA: [offer_100, reject, offer_100], USSR: [reject, offer_050, accept], UK: [ratify], FRA: [ratify]}
+        chance: [talks_continue*2]
+        outcome: agreement
+    outcomes:
+      agreement: {narrative: "The Two Plus Four Treaty unifies Germany.", effects: [{flag: germany_reunified}, {unflag: germany_divided}, {shift_influence: {region: germany, toward: USA, amount: 0.4, scale_by: share}}, {add: {path: powers.USSR.prestige, value: -0.1}}, {tension: -0.1}]}
+      breakdown: {narrative: "Talks on Germany's future collapse amid Soviet threats.", effects: [{tension: 0.3}, {flag: german_crisis}]}
+      impasse: {narrative: "Germany remains divided for now.", effects: [{flag: germany_divided_still}]}
+      vetoed: {narrative: "London and Paris balk at a unified Germany.", effects: [{flag: germany_divided_still}, {relations: {a: USA, b: UK, add: -0.1}}]}
+
+  - id: august_coup
+    kind: major
+    title: The August coup
+    window: {earliest: 1991-Q3, latest: 1991-Q4}
+    historical_date: 1991-Q3
+    when:
+      all:
+        - leader: {power: USSR, in: [gorbachev]}
+        - compare: {path: powers.USSR.stability, op: lt, value: 0.55}
+        - any:
+            - flag: eastern_bloc_collapsed
+            - flag: baltic_independence
+    narrative: "Hardliners place Gorbachev under arrest and send tanks into Moscow."
+    # Light review (2026-10-26, EXPERIMENTS.md E48; Plokhy, The Last Empire, 2014; Knight,
+    # Spies Without Cloaks, 1996; Taylor, Politics and the Russian Army, 2003; Dunlop, The
+    # Rise of Russia and the Fall of the Soviet Empire, 1993). Mechanism: coups are decided
+    # by whether the security forces obey (Taylor 2003; Singh, Seizing Power, 2014): the
+    # resistance's strength (the army's defection) rises as Soviet stability falls (bound).
+    # Washington's choice to condemn or stay silent is the rival's. The Soviet seat values
+    # the union's fate by its goals (derived).
+    model:
+      family: intervention
+      tier: 1
+      payoffs: derived
+      effects: contract
+      config:
+        clash_risk: 0.1
+        costs: {back_down: 0.5, condemn: 0.05, confront: 1.0, covert_aid: 0.3, crackdown: 0.3, intervene: 0.8}
+        p_strong: 0.6
+        report_accuracy: 0.7
+        roles: {patron: USSR, rival: USA}
+        values:
+          patron: {clash: -30, crushed: 0.3, defected: -3.0, quagmire: -2.0, reformed: 0.5}
+          rival: {clash: -30, crushed: -1.0, defected: 1.5, quagmire: 0.0, reformed: 0.3}
+      bindings:
+        - {at: p_strong, base: 1.1, terms: {powers.USSR.stability: -1.0}, clamp: [0.1, 0.95]}
+      historical:
+        choices: {USSR: [crackdown], USA: [condemn]}
+        chance: [strong, alarming, defected]
+        outcome: defected
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      defected: {narrative: "The coup collapses in three days; the republics break away.", additions: [{flag: soviet_union_collapsing}, {add: {path: powers.USSR.stability, value: -0.2}}]}
+      reformed: {narrative: "A new Union Treaty preserves a looser federation.", additions: [{flag: union_treaty}, {add: {path: powers.USSR.stability, value: 0.1}}]}
+      crushed: {narrative: "The hardliners hold Moscow.", additions: [{flag: hardline_coup}, {tension: 0.2}, {add: {path: powers.USSR.stability, value: 0.05}}]}
+      quagmire: {narrative: "The Soviet Union slides into civil war.", additions: [{flag: soviet_civil_war}, {add: {path: powers.USSR.stability, value: -0.2}}, {tension: 0.2}]}
+      clash: {narrative: "Chaos in Moscow ends in nuclear catastrophe.", additions: [{end_campaign: nuclear_war}]}
+
+  - id: chiang_ching_kuo_dies
+    kind: leadership
+    title: Death of Chiang Ching-kuo (Nationalist China)
+    window: {earliest: 1988-Q1, latest: 1989-Q4}
+    priority: 20
+    when:
+      all:
+        - leader: {power: PRC, in: [chiang_ching_kuo]}
+        - regime: {power: PRC, in: [kmt]}
+    narrative: "Chiang Ching-kuo dies; Lee Teng-hui succeeds him and continues political reform."
+    effects: [{leader: lee_teng_hui}]

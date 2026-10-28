@@ -1,0 +1,159 @@
+# The crisis generator (GOALS.md section 12, decisions 16-21; EXPERIMENTS.md E49).
+#
+# Crises arise where the world makes them likely, on five templates over the families. Each
+# quarter, for each template and region, a crisis starts with hazard
+#     h = rate x group_factor x decade_factor x exp(sum_k slope_k (x_k - reference_k))
+# where the x_k are features of the region and the world (`features`). Roles are cast from
+# the world (`roles`): the region's leading power and its strongest rival. Payoffs are derived
+# from the goals and effects come from the shared contract (contract.yaml), so a generated
+# crisis carries no hand-set stakes; its numbers here are generic judgment, in the register.
+#
+# Named crises take precedence: a region with a named or generated major event active, or one
+# that started within `precedence_quarters`, gets no generated crisis (decision 21). They also
+# count toward the base rates: the fit scales the factors so that named plus generated crises
+# match the data's marginal distributions by template, region group and decade (decision 18).
+#
+# Data: International Crisis Behavior v16 (Brecher, Wilkenfeld et al., 2021; icbdata
+# at Duke), the 91 crises of 1945-91 with one of the five powers as a crisis actor (ICB2
+# actor codes 2, 365, 710, 200, 220), classified: full-scale war (ICB `viol` 4) a proxy war,
+# else a trigger of internal challenge to a regime (`break` 6) an uprising, else a standoff.
+# Only these aggregates are kept here. COW militarized disputes are not used: most lie
+# below the scale of the model's crises (E49). Alignment contests and settlements have no
+# dataset; their rates are judgment.
+
+precedence_quarters: 4
+
+# the model's regions in ICB's geographic groups (ICB GEOG, UN regions)
+groups:
+  europe: [western_europe, germany, eastern_europe, mediterranean]
+  middle_east: [middle_east, persian_gulf, north_africa]
+  south_asia: [south_asia, afghanistan]
+  east_asia: [china_mainland, taiwan, korea, japan, indochina, southeast_asia]
+  americas: [latin_america, caribbean]
+  africa: [central_africa, horn_of_africa]
+
+decades: [1940, 1950, 1960, 1970, 1980, 1990]  # 1945-49 counts as 1940, 1990-91 as 1990
+
+# ICB v16 marginals (the fit's targets; counts over 1945-91)
+targets:
+  standoff:
+    groups: {europe: 17, middle_east: 9, south_asia: 4, east_asia: 17, americas: 10, africa: 6}
+    decades: {1940: 11, 1950: 12, 1960: 16, 1970: 10, 1980: 13, 1990: 1}
+  proxy_war:
+    groups: {europe: 0, middle_east: 6, south_asia: 1, east_asia: 9, americas: 1, africa: 3}
+    decades: {1940: 1, 1950: 4, 1960: 4, 1970: 9, 1980: 1, 1990: 1}
+  uprising:
+    groups: {europe: 4, middle_east: 1, south_asia: 0, east_asia: 1, americas: 1, africa: 1}
+    decades: {1940: 1, 1950: 1, 1960: 4, 1970: 1, 1980: 1, 1990: 0}
+
+# named major events count toward the targets by family
+named: {crisis: standoff, attrition: proxy_war, intervention: uprising}
+
+# log-hazard slopes (judgment; Fearon and Laitin, APSR 97, 2003, on instability; Bremer,
+# J. Conflict Resolution 36, 1992, on contested dyads; Brecher and Wilkenfeld, A Study of
+# Crisis, 1997, on system tension), at the reference values
+features:
+  instability: {reference: 0.5, standoff: 1.0, proxy_war: 2.0, uprising: 2.0, alignment: 1.0, settlement: 0.0}
+  contest: {reference: 0.15, standoff: 3.0, proxy_war: 2.0, uprising: 1.0, alignment: 3.0, settlement: 0.0}
+  tension: {reference: 0.4, standoff: 1.0, proxy_war: 0.5, uprising: 0.0, alignment: 0.0, settlement: -1.0}
+  colonial: {reference: 0.0, standoff: 0.0, proxy_war: 1.0, uprising: 0.0, alignment: 0.0, settlement: 0.0}
+  recent_war: {reference: 0.0, standoff: 0.0, proxy_war: 0.0, uprising: 0.0, alignment: 0.0, settlement: 2.0}
+
+templates:
+  standoff:  # a coercive standoff: the rival challenges the region's leading power
+    family: crisis
+    rate: 0.04294  # per region-quarter at the reference features (fitted, E49)
+    group_factor: {europe: 0.7121, middle_east: 0.7005, south_asia: 1.2787, east_asia: 0.6667, americas: 1.0286, africa: 1.6134}
+    decade_factor: {1940: 2.9223, 1950: 0.7625, 1960: 0.7513, 1970: 0.6444, 1980: 0.5883, 1990: 0.331}
+    config:
+      roles:
+        $A: {side: a, values: {a_prevails: 1.0, b_prevails: -1.0, compromise: 0.3, limited_war: -3.0, nuclear_war: -50.0}, escalation_cost: 0.1, audience_cost: 0.5}
+        $B: {side: b, values: {a_prevails: -1.0, b_prevails: 1.0, compromise: 0.3, limited_war: -3.0, nuclear_war: -50.0}, escalation_cost: 0.1, audience_cost: 0.5}
+      script:
+        - {stage: types, roles: {$A: {p_high_resolve: 0.5}, $B: {p_high_resolve: 0.5}}}
+        - {stage: move, actor: $B, options: [{id: challenge, kind: escalate, rungs: 1}, {id: back_off, kind: concede}]}
+        - {stage: signal, actor: $A, options: [{id: firm, stance: hard}, {id: conciliatory, stance: soft}]}
+        - {stage: move, actor: $A, options: [{id: hold, kind: hold}, {id: escalate, kind: escalate}, {id: offer_deal, kind: deal}, {id: give_way, kind: concede}]}
+        - {stage: respond, actor: $B}
+        - {stage: move, actor: $B, options: [{id: press_on, kind: hold}, {id: escalate, kind: escalate}, {id: withdraw, kind: concede}]}
+        # generic risk (judgment, QUESTIONS Q27): a war by accident, a small share nuclear
+        - {stage: accident, per_rung: 0.03, nuclear_per_rung: 0.02}
+      final_outcome: a_prevails  # the status quo holds unless the leading power gives way
+
+  proxy_war:  # a civil or proxy war: the government backed by the leading power, the
+              # insurgents by its rival; under colonial rule the owner fights for itself
+    family: attrition
+    cadence: annual
+    rate: 0.005491  # per region-quarter at the reference features (fitted, E49)
+    group_factor: {europe: 0.0015, middle_east: 2.1885, south_asia: 0.0492, east_asia: 0.7057, americas: 1.2079, africa: 1.8473}
+    decade_factor: {1940: 0.0234, 1950: 1.0614, 1960: 1.2567, 1970: 2.0798, 1980: 0.005, 1990: 1.5737}
+    config:
+      sponsors:
+        # the local sides (computer-run, hand values: generic judgment, as Hanoi's in E47)
+        GOV: {side: a, capacity: 0.0, cost_scale: 0.2, values: {a_victory: 3.0, b_victory: -5.0, partition: -1.0, a_withdrew: -5.0, b_withdrew: 3.0, stalemate: -0.5}}
+        INS: {side: b, capacity: 0.0, cost_scale: 0.2, values: {a_victory: -5.0, b_victory: 3.0, partition: -1.0, a_withdrew: 3.0, b_withdrew: -5.0, stalemate: -0.5}}
+        $A: {side: a, capacity: 0.8, direct: true, values: {a_victory: 1.0, b_victory: -1.0, partition: 0.0, a_withdrew: -1.0, b_withdrew: 1.0, stalemate: 0.0}}
+        $B: {side: b, capacity: 0.6, values: {a_victory: -1.0, b_victory: 1.0, partition: 0.0, a_withdrew: 1.0, b_withdrew: -1.0, stalemate: 0.0}}
+      leads: {a: GOV, b: INS}
+      local_strength: {a: 1.0, b: 1.0}
+      initial_control: 0.6
+      step: 0.04
+      victory_threshold: 0.84
+      max_rounds: 24
+      weariness: {high: 0.01, direct: 0.02}
+    bindings:
+      # the insurgents are stronger where the region is unstable
+      - {at: local_strength.b, base: 1.5, terms: {regions.$R.stability: -1.0}, clamp: [0.5, 1.5]}
+      - {at: sponsors.$A.capacity, base: 0.5, terms: {powers.$A.economy: 0.2}, clamp: [0.3, 1.5]}
+      - {at: sponsors.$B.capacity, base: 0.3, terms: {powers.$B.economy: 0.2}, clamp: [0.2, 1.2]}
+
+  uprising:  # a client's uprising: the leading power decides whether to crush it
+    family: intervention
+    rate: 0.003675  # per region-quarter at the reference features (fitted, E49)
+    group_factor: {europe: 0.0185, middle_east: 0.6773, south_asia: 0.0296, east_asia: 0.2389, americas: 0.0196, africa: 5.0161}
+    decade_factor: {1940: 4.5553, 1950: 0.0192, 1960: 1.3917, 1970: 0.0126, 1980: 0.0144, 1990: 0.0068}
+    config:
+      clash_risk: 0.1
+      costs: {back_down: 0.5, condemn: 0.05, confront: 1.0, covert_aid: 0.2, crackdown: 0.3, intervene: 1.0}
+      p_strong: 0.5
+      report_accuracy: 0.7
+      roles: {patron: $A, rival: $B}
+      values:
+        patron: {clash: -5.0, crushed: 0.5, defected: -1.0, quagmire: -1.0, reformed: 0.0}
+        rival: {clash: -5.0, crushed: -0.5, defected: 1.0, quagmire: 0.5, reformed: 0.3}
+    bindings:
+      # the movement is likelier strong where the region is unstable
+      - {at: p_strong, base: 1.0, terms: {regions.$R.stability: -1.0}, clamp: [0.1, 0.9]}
+
+  alignment:  # a contest for a non-aligned government's alignment
+    family: alignment
+    rate: 0.001  # judgment: no dataset (not fitted)
+    group_factor: {europe: 1.0, middle_east: 1.0, south_asia: 1.0, east_asia: 1.0, americas: 1.0, africa: 1.0}
+    decade_factor: {1940: 1.0, 1950: 1.0, 1960: 1.0, 1970: 1.0, 1980: 1.0, 1990: 1.0}
+    config:
+      clients:
+        CLIENT: {affinity: {$A: 0.0, $B: 0.0}, mode: chance, nonaligned: 0.3}
+      patrons:
+        $A: {gain: {CLIENT: 1.0}, loss: {CLIENT: 0.5}, offer_cost: {none: 0.0, aid: 0.1, aid_guarantee: 0.3}, offer_value: {none: 0.0, aid: 0.5, aid_guarantee: 0.9}}
+        $B: {gain: {CLIENT: 1.0}, loss: {CLIENT: 0.5}, offer_cost: {none: 0.0, aid: 0.1, aid_guarantee: 0.3}, offer_value: {none: 0.0, aid: 0.5, aid_guarantee: 0.9}}
+
+  settlement:  # talks to settle a region after a war or crisis there
+    family: bargaining
+    requires: recent_war  # only where a war ended within two years
+    cadence: quarterly
+    rate: 0.002  # judgment: no dataset (not fitted)
+    group_factor: {europe: 1.0, middle_east: 1.0, south_asia: 1.0, east_asia: 1.0, americas: 1.0, africa: 1.0}
+    decade_factor: {1940: 1.0, 1950: 1.0, 1960: 1.0, 1970: 1.0, 1980: 1.0, 1990: 1.0}
+    config:
+      roles: {A: $A, B: $B}
+      grid: [0.3, 0.4, 0.5, 0.6, 0.7]
+      horizon: 4
+      first_proposer: A
+      sides:
+        A: {discount: 0.97, delay_cost: 0.02, breakdown_value: -0.5, impasse_value: -0.2}
+        B: {discount: 0.97, delay_cost: 0.02, breakdown_value: -0.5, impasse_value: -0.2}
+      breakdown: {base: 0.02, growth: 0.01, max: 0.1}
+    additions:
+      agreement:  # the settlement divides the region's influence by the agreed share
+        - {shift_influence: {region: $R, toward: $A, amount: 0.2, scale_by: share}}
+        - {shift_influence: {region: $R, toward: $B, amount: 0.2, scale_by: {metric: share, invert: true}}}

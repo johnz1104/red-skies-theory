@@ -5,12 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cold-war-sim"
 version = "0.2.0"
-description = "A game-theoretic engine for modeling Cold War events, built for multi-agent reinforcement learning with agents playing as competing countries."
+description = "A game-theoretic model of the Cold War (1945-1991), built for multi-agent reinforcement learning and counterfactual questions."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.24",
+  "PyYAML>=6.0",
+  "jsonschema>=4.0",
 ]
+
+[project.scripts]
+cold-war-campaign = "cold_war_sim.campaign.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -25,10 +30,14 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"cold_war_sim.campaign" = ["data/*.yaml", "data/events/*.yaml", "data/schema/*.json"]
+
 [tool.pytest.ini_options]
 minversion = "7.4"
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+markers = ["slow: campaign-level tests (skip with -m 'not slow')"]
 
 [tool.ruff]
 target-version = "py311"

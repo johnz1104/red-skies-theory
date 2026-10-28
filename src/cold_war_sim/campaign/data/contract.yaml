@@ -1,0 +1,79 @@
+# The shared effects contract (provisional; user decision 2026-10-26, GOALS.md §12
+# decisions 20-21, EXPERIMENTS.md E47). Generic outcome effects per template, so that
+# events, and later the crisis generator, carry no bespoke effect sizes. An event opts in
+# with `model.effects: contract`; its outcomes then list only documented `additions`
+# (flags other events read, and effects specific to the event, each with its source).
+#
+# Who wins: the power roles on the winning side (crisis: roles of side a or b; attrition:
+# sponsors of side a or b). Computer-run roles (EGY, DRV, ...) have no influence or
+# credibility of their own, so influence they would have won stays local.
+# Influence moves in the event's region by `influence` x (the region's importance /
+# reference_importance); attrition sponsors split it by their share of their side's
+# effort (the `side_share` metric), so a patron gains as much as it contributed.
+#
+# All sizes are judgment, in the range the reviewed events used (crises: credibility
+# 0.05-0.1, influence 0.05-0.25; wars: credibility 0.15-0.2, influence 0.15-0.5), with
+# ranges in the assumptions register. Noted for the generator round: scaling influence
+# by importance and then valuing it by importance in the goals counts importance twice.
+
+reference_importance: 1.5  # about the mean region importance (1.43)
+
+crisis:
+  prevails:  # a_prevails, b_prevails
+    influence: 0.15
+    winner_credibility: 0.1
+    loser_credibility: -0.1
+  compromise:
+    tension: -0.05
+  limited_war:  # a war that is not played out: decision 6's explicit war costs
+    quarters: 4  # costs equal to a year of full effort, by the dynamics' war drag
+    forces: 0.05  # share of conventional forces lost (the dynamics drain no forces)
+    region_stability: -0.3
+    relations: -0.3  # between the two sides' leading powers
+    tension: 0.2
+
+attrition:
+  victory:  # a_victory, b_victory
+    influence: 0.4
+    winner_credibility: 0.15
+    loser_credibility: -0.2
+  withdrawal:  # a_withdrew, b_withdrew: the side that stayed wins, less decisively
+    influence: 0.3
+    winner_credibility: 0.1
+    loser_credibility: -0.15
+
+# E48: the other three templates (provisional; the same judgment basis)
+bargaining:
+  agreement:
+    relations: 0.1  # between the two parties
+    tension: -0.05
+  breakdown:
+    relations: -0.1
+    tension: 0.05
+
+alignment:
+  aligned:  # aligned_<patron>: the client sides with that patron
+    influence: 0.2
+    winner_credibility: 0.05
+    loser_credibility: -0.05  # the other patrons, which contested it
+
+intervention:
+  crushed:  # the patron keeps its hold by force
+    winner_credibility: 0.05
+    relations: -0.1  # the rival's outrage
+  defected:  # the client leaves the patron's camp for the rival's
+    influence: 0.3
+    winner_credibility: 0.05
+    loser_credibility: -0.1
+  reformed:  # the client stays but loosens its ties
+    influence: 0.1
+  quagmire:  # the patron is bogged down
+    quarters: 4
+    region_stability: -0.2
+    loser_credibility: -0.05
+  clash:  # patron and rival come to blows: a crisis's unplayed war
+    quarters: 4
+    forces: 0.05
+    region_stability: -0.3
+    relations: -0.3
+    tension: 0.2

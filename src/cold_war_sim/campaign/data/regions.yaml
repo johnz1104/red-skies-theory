@@ -1,0 +1,125 @@
+# Regions: importance (weight in influence scores), opening stability, the
+# stability each region reverts to, colonial owner, and 1945 influence shares
+# (the remainder is local or neutral). Provenance: illustrative.
+
+regions:
+  western_europe:
+    name: Western Europe
+    importance: 3.0
+    stability: 0.4
+    base_stability: 0.7
+    influence: {USA: 0.3, UK: 0.15, FRA: 0.15, USSR: 0.1}
+  germany:
+    name: Germany and Berlin
+    importance: 2.5
+    stability: 0.3
+    base_stability: 0.6
+    influence: {USA: 0.25, USSR: 0.35, UK: 0.15, FRA: 0.1}
+  eastern_europe:
+    name: Eastern Europe
+    importance: 2.0
+    stability: 0.4
+    base_stability: 0.5
+    influence: {USSR: 0.55, USA: 0.1, UK: 0.05}
+  mediterranean:
+    name: Mediterranean (Greece, Turkey, Italy)
+    importance: 1.5
+    stability: 0.4
+    base_stability: 0.6
+    influence: {UK: 0.35, USA: 0.15, USSR: 0.15}
+  middle_east:
+    name: Middle East (Egypt, Levant)
+    importance: 1.5
+    stability: 0.5
+    base_stability: 0.5
+    colonial_owner: UK
+    influence: {UK: 0.45, FRA: 0.15, USA: 0.05}
+  persian_gulf:
+    name: Persian Gulf (Iran, Iraq, Arabia)
+    importance: 2.0
+    stability: 0.5
+    base_stability: 0.5
+    influence: {UK: 0.35, USSR: 0.2, USA: 0.15}
+  north_africa:
+    name: North Africa (Algeria, Maghreb)
+    importance: 1.0
+    stability: 0.6
+    base_stability: 0.6
+    colonial_owner: FRA
+    influence: {FRA: 0.6, UK: 0.1}
+  south_asia:
+    name: South Asia (India, Pakistan)
+    importance: 1.5
+    stability: 0.5
+    base_stability: 0.5
+    colonial_owner: UK
+    influence: {UK: 0.55}
+  afghanistan:
+    name: Afghanistan
+    importance: 0.5
+    stability: 0.6
+    base_stability: 0.6
+    influence: {UK: 0.15, USSR: 0.15}
+  china_mainland:
+    name: Mainland China
+    importance: 2.5
+    stability: 0.3
+    base_stability: 0.5
+    influence: {USA: 0.35, USSR: 0.15, PRC: 0.25}
+  taiwan:
+    name: Taiwan
+    importance: 0.6
+    stability: 0.6
+    base_stability: 0.7
+    influence: {USA: 0.4}
+  korea:
+    name: Korea
+    importance: 0.8
+    stability: 0.4
+    base_stability: 0.5
+    influence: {USA: 0.3, USSR: 0.3}
+  japan:
+    name: Japan
+    importance: 2.0
+    stability: 0.4
+    base_stability: 0.7
+    influence: {USA: 0.7}
+  indochina:
+    name: Indochina
+    importance: 1.0
+    stability: 0.4
+    base_stability: 0.5
+    colonial_owner: FRA
+    influence: {FRA: 0.45, PRC: 0.05}
+  southeast_asia:
+    name: Southeast Asia (Malaya, Indonesia, Philippines)
+    importance: 1.2
+    stability: 0.5
+    base_stability: 0.55
+    colonial_owner: UK
+    influence: {UK: 0.35, USA: 0.2}
+  latin_america:
+    name: Latin America
+    importance: 1.5
+    stability: 0.6
+    base_stability: 0.6
+    influence: {USA: 0.6}
+  caribbean:
+    name: Caribbean and Central America
+    importance: 0.6
+    stability: 0.6
+    base_stability: 0.6
+    influence: {USA: 0.65}
+  central_africa:
+    name: Central and Southern Africa (Congo, Angola)
+    importance: 1.0
+    stability: 0.6
+    base_stability: 0.6
+    colonial_owner: UK
+    influence: {UK: 0.3, FRA: 0.25}
+  horn_of_africa:
+    name: Horn of Africa (Ethiopia, Somalia)
+    importance: 0.5
+    stability: 0.5
+    base_stability: 0.5
+    influence: {UK: 0.3, USA: 0.1}

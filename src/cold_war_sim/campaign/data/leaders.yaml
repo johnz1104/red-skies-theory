@@ -1,0 +1,49 @@
+# Leaders and illustrative traits in [0, 1]. Traits only modulate sub-game
+# parameter bindings (risk attitudes, patience, reform pressure); agents still
+# make every choice for their power.
+
+leaders:
+  # United States
+  truman: {power: USA, name: Harry S. Truman, hawkishness: 0.6, risk_tolerance: 0.5, reformism: 0.4}
+  eisenhower: {power: USA, name: Dwight D. Eisenhower, hawkishness: 0.5, risk_tolerance: 0.4, reformism: 0.3}
+  kennedy: {power: USA, name: John F. Kennedy, hawkishness: 0.5, risk_tolerance: 0.5, reformism: 0.5}
+  johnson: {power: USA, name: Lyndon B. Johnson, hawkishness: 0.6, risk_tolerance: 0.5, reformism: 0.6}
+  nixon: {power: USA, name: Richard Nixon, hawkishness: 0.6, risk_tolerance: 0.6, reformism: 0.4}
+  ford: {power: USA, name: Gerald Ford, hawkishness: 0.4, risk_tolerance: 0.3, reformism: 0.3}
+  carter: {power: USA, name: Jimmy Carter, hawkishness: 0.3, risk_tolerance: 0.3, reformism: 0.6}
+  reagan: {power: USA, name: Ronald Reagan, hawkishness: 0.8, risk_tolerance: 0.6, reformism: 0.4}
+  bush: {power: USA, name: George H. W. Bush, hawkishness: 0.5, risk_tolerance: 0.4, reformism: 0.4}
+  # Soviet Union
+  stalin: {power: USSR, name: Joseph Stalin, hawkishness: 0.8, risk_tolerance: 0.4, reformism: 0.0}
+  malenkov: {power: USSR, name: Georgy Malenkov, hawkishness: 0.4, risk_tolerance: 0.3, reformism: 0.4}
+  khrushchev: {power: USSR, name: Nikita Khrushchev, hawkishness: 0.6, risk_tolerance: 0.8, reformism: 0.6}
+  brezhnev: {power: USSR, name: Leonid Brezhnev, hawkishness: 0.6, risk_tolerance: 0.4, reformism: 0.1}
+  andropov: {power: USSR, name: Yuri Andropov, hawkishness: 0.7, risk_tolerance: 0.3, reformism: 0.3}
+  chernenko: {power: USSR, name: Konstantin Chernenko, hawkishness: 0.5, risk_tolerance: 0.2, reformism: 0.1}
+  gorbachev: {power: USSR, name: Mikhail Gorbachev, hawkishness: 0.2, risk_tolerance: 0.4, reformism: 0.95}
+  soviet_hardliner: {power: USSR, name: A hardline Politburo successor, hawkishness: 0.7, risk_tolerance: 0.4, reformism: 0.2}
+  # People's Republic of China
+  mao: {power: PRC, name: Mao Zedong, hawkishness: 0.8, risk_tolerance: 0.8, reformism: 0.3}
+  hua_guofeng: {power: PRC, name: Hua Guofeng, hawkishness: 0.5, risk_tolerance: 0.3, reformism: 0.3}
+  deng: {power: PRC, name: Deng Xiaoping, hawkishness: 0.4, risk_tolerance: 0.4, reformism: 0.8}
+  # Republic of China: the Nationalists, if they win the civil war and hold the China seat
+  chiang_kai_shek: {power: PRC, name: Chiang Kai-shek, hawkishness: 0.7, risk_tolerance: 0.5, reformism: 0.2}
+  chiang_ching_kuo: {power: PRC, name: Chiang Ching-kuo, hawkishness: 0.5, risk_tolerance: 0.3, reformism: 0.5}
+  lee_teng_hui: {power: PRC, name: Lee Teng-hui, hawkishness: 0.3, risk_tolerance: 0.3, reformism: 0.8}
+  # United Kingdom
+  attlee: {power: UK, name: Clement Attlee, hawkishness: 0.4, risk_tolerance: 0.3, reformism: 0.6}
+  churchill: {power: UK, name: Winston Churchill, hawkishness: 0.7, risk_tolerance: 0.5, reformism: 0.2}
+  eden: {power: UK, name: Anthony Eden, hawkishness: 0.6, risk_tolerance: 0.6, reformism: 0.2}
+  macmillan: {power: UK, name: Harold Macmillan, hawkishness: 0.4, risk_tolerance: 0.4, reformism: 0.4}
+  douglas_home: {power: UK, name: Alec Douglas-Home, hawkishness: 0.5, risk_tolerance: 0.4, reformism: 0.2}
+  wilson: {power: UK, name: Harold Wilson, hawkishness: 0.3, risk_tolerance: 0.3, reformism: 0.6}
+  heath: {power: UK, name: Edward Heath, hawkishness: 0.4, risk_tolerance: 0.4, reformism: 0.5}
+  callaghan: {power: UK, name: James Callaghan, hawkishness: 0.4, risk_tolerance: 0.3, reformism: 0.4}
+  thatcher: {power: UK, name: Margaret Thatcher, hawkishness: 0.8, risk_tolerance: 0.6, reformism: 0.6}
+  major: {power: UK, name: John Major, hawkishness: 0.5, risk_tolerance: 0.4, reformism: 0.4}
+  # France
+  fourth_republic: {power: FRA, name: Fourth Republic coalition governments, hawkishness: 0.5, risk_tolerance: 0.4, reformism: 0.3}
+  de_gaulle: {power: FRA, name: Charles de Gaulle, hawkishness: 0.6, risk_tolerance: 0.6, reformism: 0.5}
+  pompidou: {power: FRA, name: Georges Pompidou, hawkishness: 0.5, risk_tolerance: 0.4, reformism: 0.4}
+  giscard: {power: FRA, name: Valery Giscard d'Estaing, hawkishness: 0.4, risk_tolerance: 0.4, reformism: 0.6}
+  mitterrand: {power: FRA, name: Francois Mitterrand, hawkishness: 0.4, risk_tolerance: 0.4, reformism: 0.6}

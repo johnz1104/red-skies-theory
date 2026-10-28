@@ -1,0 +1,74 @@
+# Fixture for decision events, optional roles, re-firing wars and re-binding on a leader change.
+era: 8
+title: Decisions and wars that bargain while fighting (fixture)
+events:
+  - id: fx_garrison
+    kind: decision
+    title: Keep the garrison?
+    window: {earliest: 1946-Q1, latest: 1950-Q4}
+    once: false
+    when:
+      all:
+        - flag: korea_divided
+        - no_flag: fx_garrison_gone
+        - quarter_of_year: 1
+    decision: {power: USA, historical: [keep_garrison, withdraw]}
+    outcomes:
+      keep_garrison: {narrative: "The garrison stays another year."}
+      withdraw:
+        narrative: "The garrison leaves."
+        effects: [{flag: fx_garrison_gone}, {add: {path: powers.USA.conventional, value: 0.1}}]
+
+  - id: fx_war
+    kind: major
+    title: A war once the garrison has gone
+    window: {earliest: 1946-Q1}
+    once: false
+    when: {all: [{flag: fx_garrison_gone}, {no_flag: [fx_rebuffed, fx_war_fought]}]}
+    model:
+      family: attrition
+      cadence: quarterly
+      region: korea
+      optional_roles:
+        PRC: {status: {power: PRC, in: [active]}}
+      config:
+        approval: [USSR, PRC]
+        sponsors:
+          USA: {side: a, capacity: 1.0, direct: true, values: {a_victory: 2, b_victory: -2, partition: 0, a_withdrew: -3, b_withdrew: 2, stalemate: 0, refused: 0}}
+          USSR: {side: b, capacity: 0.6, values: {a_victory: -0.5, b_victory: 1, partition: 0, a_withdrew: 1, b_withdrew: -1, stalemate: 0, refused: -1}}
+          PRC: {side: b, capacity: 1.0, direct: true, values: {a_victory: -2, b_victory: 1, partition: 0, a_withdrew: 1, b_withdrew: -2, stalemate: 0, refused: 0}}
+        leads: {a: USA, b: PRC}
+        local_strength: {a: 0.6, b: 1.0}
+        max_rounds: 4
+        offers: {grid: [0.4, 0.5, 0.6], proposer: a, consent: [USSR]}
+      bindings:
+        - {at: sponsors.USSR.cost_scale, base: 2.0, terms: {powers.USSR.hawkishness: -2.0}, clamp: [0.1, 2.0]}
+        - {at: sponsors.PRC.capacity, base: 1.0, terms: {powers.PRC.hawkishness: 0.5}, clamp: [0.5, 2.0]}
+      historical:
+        instances:
+          - {before: 1947-Q3, choices: {USSR: [refuse]}}
+          - {choices: {USA: [no_offer/direct*4], USSR: [approve, high*4], PRC: [approve, direct*4]}, chance: [a_gains*4]}
+        outcome: a_victory
+    outcomes:
+      refused: {narrative: "Moscow refuses.", effects: [{flag: fx_rebuffed}]}
+      a_victory: {effects: [{flag: fx_war_fought}]}
+      b_victory: {effects: [{flag: fx_war_fought}]}
+      partition: {effects: [{flag: fx_war_fought}]}
+      a_withdrew: {effects: [{flag: fx_war_fought}]}
+      b_withdrew: {effects: [{flag: fx_war_fought}]}
+      stalemate: {effects: [{flag: fx_war_fought}]}
+
+  - id: fx_asks_again
+    kind: cutscene
+    title: The request returns
+    once: false
+    when: {flag: fx_rebuffed}
+    effects: [{unflag: fx_rebuffed}]
+
+  - id: fx_new_soviet_leader
+    kind: leadership
+    title: A new Soviet leader
+    window: {earliest: 1947-Q4, latest: 1947-Q4}
+    priority: 20
+    when: {active: fx_war}
+    effects: [{leader: malenkov}]

@@ -1,0 +1,737 @@
+# The assumptions register (user decision 7, 2026-10-14; design of 2026-10-17; generated
+# report: docs/ASSUMPTIONS.md; code: campaign/assumptions.py).
+#
+# Every hand-set number in the campaign data is listed here, by class rule or by entry:
+# - its basis: data (a dataset, with the source's own error), literature (a historian's or
+#   a study's argument), calibrated (fit to a historical date or rate), or judgment;
+# - its kind, which sets the scale its range lives on: magnitude or signed (log scale, sign
+#   kept), probability or share (logit), relation (logit of (r + 1) / 2), intercept (a
+#   binding's base, additive);
+# - a plausible range, or why it is fixed (structural, historical, bound, zero, score,
+#   method, code).
+#
+# Addresses: `<doc>:<path>` for goals, powers, regions, leaders, initial and strategy;
+# `dynamics:<key>` for a dynamics.DEFAULTS coefficient; `event:<id>/<path>`; `code:` and
+# `engine:` for constants in Python. Paths use "/" (binding terms contain dots); list items
+# are numbered from 0.
+
+# The range a number gets when its entry gives none (user decision 2026-10-17: graded by
+# basis, on natural scales). factor: magnitudes run from v / factor to v * factor; logit:
+# probabilities and shares run over logit(v) +- logit; intercept: a binding's base moves by
+# this share of its clamp's width either way.
+ranges:
+  judgment: {factor: 2.0, logit: 1.0, intercept: 0.25}
+  literature: {factor: 1.333, logit: 0.5, intercept: 0.125}
+  calibrated: {factor: 1.333, logit: 0.5, intercept: 0.125}
+  data: {factor: 1.1, logit: 0.25, intercept: 0.05}
+
+# Class rules, tried in order; the first that matches a number covers it. `match` is a glob
+# on the address (`*` within one segment, `**` across segments); `path` is a glob on the
+# sibling `path` of an effect or a condition; `linked` and `capped` name the address segment
+# (counted from the end) that varies across a set whose total is kept, or whose sum may not
+# pass 1.
+classes:
+  # the crisis generator (generator.yaml, E49)
+  - {match: "generator:precedence_quarters", group: structure, fixed: structural, why: "quarters a region's crisis blocks a generated one (decision 21)"}
+  - {match: "generator:decades/*", group: structure, fixed: structural, why: "the fit's decade bins"}
+  - {match: "generator:targets/**", group: generator, fixed: historical, why: "ICB v16 counts, 1945-91 (the fit's targets)"}
+  - {match: "generator:features/*/reference", group: structure, fixed: method, why: "a feature's centring: the rate applies at the reference"}
+  - {match: "generator:features/*/*", group: generator, kind: signed, why: "a log-hazard slope on a feature (judgment, literature-signed)"}
+  - {match: "generator:templates/*/rate", group: generator, kind: magnitude, why: "a template's base rate per region-quarter (fitted to ICB, or judgment)"}
+  - {match: "generator:templates/*/group_factor/*", group: generator, kind: magnitude, why: "a template's rate factor for a region group (fitted)"}
+  - {match: "generator:templates/*/decade_factor/*", group: generator, kind: magnitude, why: "a template's rate factor for a decade (fitted)"}
+  - {match: "generator:templates/*/config/roles/$*/values/*", group: structure, fixed: method, why: "a generated power role's values are derived from its goals"}
+  - {match: "generator:templates/*/config/sponsors/$*/values/*", group: structure, fixed: method, why: "a generated power role's values are derived from its goals"}
+  - {match: "generator:templates/*/config/patrons/$*/gain/*", group: structure, fixed: method, why: "derived from the goals"}
+  - {match: "generator:templates/*/config/patrons/$*/loss/*", group: structure, fixed: method, why: "derived from the goals"}
+  - {match: "generator:templates/*/config/values/**", group: structure, fixed: method, why: "an intervention's power roles' values are derived from their goals"}
+  - {match: "generator:templates/*/config/sponsors/*/values/*", group: generator, kind: signed, why: "a generated local side's values (computer-run; generic judgment, as Hanoi's in E47)"}
+  - {match: "generator:templates/*/config/roles/*/values/*", group: generator, kind: signed, why: "a generated crisis role's values"}
+  - {match: "generator:templates/*/config/sides/*/*_value", group: structure, fixed: method, why: "derived from the goals"}
+  - {match: "generator:templates/*/config/**/rungs", group: structure, fixed: structural, why: "an option's escalation rungs"}
+  - {match: "generator:templates/*/config/grid/*", group: structure, fixed: structural, why: "the offers that may be made"}
+  - {match: "generator:templates/*/config/horizon", group: structure, fixed: structural, why: "the talks' length"}
+  - {match: "generator:templates/*/config/max_rounds", group: structure, fixed: structural, why: "the war's length"}
+  - {match: "generator:templates/*/config/step", group: structure, fixed: structural, why: "the front's step"}
+  - {match: "generator:templates/*/config/victory_threshold", group: structure, fixed: structural, why: "the front's end cells"}
+  - {match: "generator:templates/*/config/initial_control", group: structure, fixed: structural, why: "the war's starting line, on the front's grid"}
+  - {match: "generator:templates/*/bindings/*/clamp/*", group: structure, fixed: bound, why: "a binding's clamp"}
+  - {match: "generator:templates/*/bindings/*/base", group: generator, kind: intercept, why: "a generated binding's intercept"}
+  - {match: "generator:templates/*/bindings/*/terms/*", group: generator, kind: signed, why: "a generated binding's slope"}
+  - {match: "generator:templates/*/config/**/p_high_resolve", group: generator, kind: probability, why: "nature's prior on a role's resolve (agnostic)"}
+  - {match: "generator:templates/*/config/p_strong", group: generator, kind: probability, why: "nature's prior on the movement's strength"}
+  - {match: "generator:templates/*/config/report_accuracy", group: generator, kind: probability, why: "the patron's intelligence"}
+  - {match: "generator:templates/*/config/clash_risk", group: generator, kind: probability, why: "chance a confrontation turns into a clash"}
+  - {match: "generator:templates/*/config/**/discount", group: generator, kind: probability, why: "a side's discount per period"}
+  - {match: "generator:templates/*/config/breakdown/*", group: generator, kind: probability, why: "the talks' breakdown hazard"}
+  - {match: "generator:templates/*/config/script/*/per_rung", group: generator, kind: probability, why: "accident risk per rung (generic, Q27)"}
+  - {match: "generator:templates/*/config/script/*/nuclear_per_rung", group: generator, kind: probability, why: "the nuclear share of an accident per rung (generic, Q27)"}
+  - {match: "generator:templates/*/config/clients/*/**", group: generator, kind: signed, why: "a generated client's affinities"}
+  - {match: "generator:templates/*/config/patrons/*/offer_*/*", group: generator, kind: magnitude, why: "an offer's cost or value to the client"}
+  - {match: "generator:templates/*/additions/**", group: effects, kind: signed, why: "a generated template's documented addition"}
+  - {match: "generator:templates/**", group: generator, kind: magnitude, why: "a generic template number (judgment)"}
+  # ------------------------------------------------------------- structure, not numbers
+  - {match: "event:*/model/tier", group: structure, fixed: structural, why: "review priority (on rails above playable_tier)"}
+  - {match: "event:*/decision/tier", group: structure, fixed: structural, why: "review priority"}
+  - {match: "event:*/priority", group: structure, fixed: structural, why: "the director's scan order"}
+  - {match: "strategy:**", group: structure, fixed: historical, why: "years of the historical strategy rows"}
+  - {match: "event:**/quarter_of_year", group: structure, fixed: structural, why: "calendar spacing of repeatable events"}
+  - {match: "event:**/quarter_of_year/*", group: structure, fixed: structural, why: "calendar spacing of repeatable events"}
+  - {match: "event:**/within_years", group: structure, fixed: structural, why: "a condition's look-back window, in whole years"}
+  - {match: "event:**/active_for/quarters", group: structure, fixed: structural, why: "a condition's duration, in whole quarters"}
+  - {match: "event:*/model/config/max_rounds", group: structure, fixed: structural, why: "the game's length"}
+  - {match: "event:*/model/config/horizon", group: structure, fixed: structural, why: "the game's length"}
+  - {match: "event:*/model/config/step", group: structure, fixed: structural, why: "the front's step; with the victory threshold it sets the number of cells"}
+  - {match: "event:*/model/config/victory_threshold", group: structure, fixed: structural, why: "the front's end cells"}
+  - {match: "event:*/model/config/initial_control", group: structure, fixed: structural, why: "the war's starting line, on the front's grid: with the step and the thresholds it sets the steps to victory (a step-wise kind could draw it later)"}
+  - {match: "event:*/model/config/grid/*", group: structure, fixed: structural, why: "the offers that may be made"}
+  - {match: "event:*/model/config/offers/grid/*", group: structure, fixed: structural, why: "the offers that may be made"}
+  - {match: "event:*/model/config/offers/opens", group: structure, fixed: structural, why: "the round in which talks open"}
+  - {match: "event:*/model/config/commitments/*/at_least", group: structure, fixed: structural, why: "a commitment's terms, on the offer grid"}
+  - {match: "event:*/model/config/red_lines/*/above", group: structure, fixed: structural, why: "the line a red line names, on the front's grid (Korea: the 38th parallel); drawn off the grid it moves the warning by a cell and the historical choices out of step (E42)"}
+  - {match: "event:*/model/config/sides/*/commitment", group: structure, fixed: structural, why: "a commitment's terms, on the offer grid"}
+  - {match: "event:*/model/config/contest/initial", group: structure, fixed: structural, why: "the contest starts in the middle"}
+  - {match: "event:*/model/config/contest/step", group: structure, fixed: structural, why: "the contest's step (four net gains end it)"}
+  - {match: "event:*/model/config/script/*/options/*/rungs", group: structure, fixed: structural, why: "an option's escalation rungs"}
+  - {match: "event:*/model/bindings/*/clamp/*", group: structure, fixed: bound, why: "a binding's clamp bounds the bound value's plausible range"}
+  - {match: "event:*/model/results/**", group: structure, fixed: method, why: "standing-scoreboard results, never in a reward"}
+  - {match: "goals:standing/**", group: structure, fixed: method, why: "the standing scoreboard, never in a reward"}
+  - {match: "goals:lookahead/quarters", group: structure, fixed: structural, why: "derived payoffs' horizon in whole quarters (the planners' horizon, E25)"}
+
+  # ------------------------------------------------- the pre-goals score only (E11, E33)
+  - {match: "powers:powers/*/score_weights/*", group: score, fixed: score, why: "only reward=\"score\" reads it"}
+  - {match: "powers:powers/*/end_bonus/*", group: score, fixed: score, why: "end bonuses apply only to reward=\"score\" (E33)"}
+  - {match: "powers:rewards/elimination_penalty", group: score, fixed: score, why: "only reward=\"score\" reads it"}
+  - {match: "powers:powers/*/initial/prestige", group: score, fixed: score, why: "prestige left the goals (2026-10-10); only the pre-goals score reads it"}
+  - {match: "event:**/effects/**/value", path: "*.prestige", group: score, fixed: score, why: "prestige left the goals; only the pre-goals score reads it"}
+
+  # ------------------------------------------------------------------- goals (goals.yaml)
+  - {match: "goals:weights/*/*/weights/*", group: goals, kind: share, linked: -1, why: "a goal weight row sums to 1"}
+  - {match: "goals:components/influence/interest/*/*", group: goals, kind: magnitude, why: "an interest-map multiplier"}
+  - {match: "goals:components/influence/rivalry/*", group: goals, kind: magnitude, why: "rivalry intensity lambda"}
+  - {match: "goals:components/allies/**", group: goals, kind: magnitude, why: "the allies band (GOALS.md section 14; placeholders)"}
+  - {match: "goals:**", group: goals, kind: magnitude, why: "a goal-function constant"}
+
+  # --------------------------------------------- powers, regions, leaders, the opening state
+  - {match: "powers:postures/*/*", group: postures, kind: share, linked: -1, why: "a posture's budget shares sum to 1"}
+  - {match: "powers:powers/*/tech_rates/*", group: powers, kind: magnitude, basis: calibrated, why: "technology rates, fit to milestone dates (E10, E35)"}
+  - {match: "powers:powers/*/initial/growth", group: powers, kind: signed, why: "opening trend growth"}
+  - {match: "powers:powers/*/initial/stability", group: powers, kind: share, why: "opening domestic stability"}
+  - {match: "powers:powers/*/initial/burden", group: powers, kind: share, why: "opening military burden (share of GDP)"}
+  - {match: "powers:powers/*/initial/*", group: powers, kind: magnitude, why: "an opening stock (economy index, forces, technology, credibility)"}
+  - {match: "powers:powers/*/military_efficiency", group: powers, kind: magnitude, why: "conversion of budget into forces"}
+  - {match: "powers:powers/*/casualty_sensitivity", group: powers, kind: magnitude, why: "how much the domestic cost of casualties weighs on a power (democracy 1)"}
+  - {match: "powers:relations/*", group: relations, kind: relation, why: "an opening relation"}
+  - {match: "powers:rewards/*", group: goals, kind: magnitude, why: "a terminal term of the goal reward"}
+  - {match: "regions:regions/*/influence/*", group: regions, kind: share, capped: -1, why: "a 1945 influence share; a region's shares may not pass 1"}
+  - {match: "regions:regions/*/importance", group: regions, kind: magnitude, why: "a region's weight in influence scores"}
+  - {match: "regions:regions/*/*", group: regions, kind: share, why: "opening or base stability"}
+  - {match: "leaders:leaders/*/*", group: leaders, kind: share, why: "a leader trait in [0, 1]"}
+  - {match: "initial:tension", group: powers, kind: share, why: "opening tension"}
+  - {match: "dynamics:*", group: dynamics, kind: magnitude, why: "a dynamics coefficient (see the entries)"}
+
+  # --------------------------------------------------------------------- events: firing
+  - {match: "event:*/hazard", group: hazards, kind: probability, why: "chance per quarter that an event fires while it can"}
+  - {match: "event:*/when/**/compare/scale", group: conditions, kind: magnitude, why: "a condition's ratio between two world values"}
+  - {match: "event:*/when/**/compare/value", path: "powers.*.tech_*", group: structure, fixed: structural, why: "a technology milestone's threshold (1.0 a first capability, 2.0 a second): the calibrated technology rates carry the timing's uncertainty"}
+  - {match: "event:*/when/**/compare/value", group: conditions, kind: auto, why: "a condition's threshold (its kind follows the compared path)"}
+
+  # -------------------------------------------------------------------- events: effects
+  - {match: "event:**/effects/**/set/value", group: effects, kind: auto, why: "an effect that sets a world value"}
+  - {match: "event:**/effects/**/add/value", group: effects, kind: signed, why: "an effect's change to a world value"}
+  - {match: "event:**/effects/**/relations/add", group: effects, kind: signed, why: "an effect's change to a relation"}
+  - {match: "event:**/effects/**/shift_influence/amount", group: effects, kind: signed, why: "an effect's influence shift"}
+  - {match: "event:**/effects/**/tension", group: effects, kind: signed, why: "an effect's change to tension"}
+  - {match: "event:**/effects/**/lottery/chance", group: effects, kind: probability, why: "a lottery's odds"}
+  # outcomes under the shared effects contract list only documented additions (E47)
+  - {match: "event:**/additions/**/set/value", group: effects, kind: auto, why: "a documented addition that sets a world value"}
+  - {match: "event:**/additions/**/add/value", group: effects, kind: signed, why: "a documented addition's change to a world value"}
+  - {match: "event:**/additions/**/relations/add", group: effects, kind: signed, why: "a documented addition's change to a relation"}
+  - {match: "event:**/additions/**/shift_influence/amount", group: effects, kind: signed, why: "a documented addition's influence shift"}
+  - {match: "event:**/additions/**/tension", group: effects, kind: signed, why: "a documented addition's change to tension"}
+  - {match: "event:**/additions/**/multiply/factor", group: effects, kind: magnitude, why: "a documented addition's scaling of a world value"}
+
+  # ------------------------------------- the shared effects contract (contract.yaml, E47)
+  - {match: "contract:reference_importance", group: contract, kind: magnitude, why: "the region importance at which the contract's influence shifts apply in full (about the mean, 1.43)"}
+  - {match: "contract:*/*/influence", group: contract, kind: share, why: "influence moved to the winners in the event's region (crises 0.05-0.25, wars 0.15-0.5 in the reviewed events)"}
+  - {match: "contract:*/*/winner_credibility", group: contract, kind: magnitude, why: "the winners' credibility gain"}
+  - {match: "contract:*/*/loser_credibility", group: contract, kind: signed, why: "the losers' credibility loss"}
+  - {match: "contract:*/*/tension", group: contract, kind: signed, why: "an outcome's change to tension (a compromise or agreement eases it, a war or breakdown raises it)"}
+  - {match: "contract:*/*/quarters", group: contract, kind: magnitude, why: "an unplayed war costs this many quarters of full effort (decision 6: about a year)"}
+  - {match: "contract:*/*/forces", group: contract, kind: share, why: "the share of conventional forces an unplayed war destroys (the dynamics drain none)"}
+  - {match: "contract:*/*/region_stability", group: contract, kind: signed, why: "an outcome's damage to the region's stability"}
+  - {match: "contract:*/*/relations", group: contract, kind: signed, why: "an outcome's change to the two sides' relations"}
+
+  # ------------------------------------------------------------------- events: bindings
+  - {match: "event:*/model/bindings/*/base", group: bindings, kind: intercept, why: "a binding's intercept (moves by a share of its clamp's width)"}
+  - {match: "event:*/model/bindings/*/terms/*", group: bindings, kind: signed, why: "a binding's slope on a world value"}
+
+  # ---------------------------------------- events: hidden types and beliefs (all families)
+  - {match: "event:*/model/config/types/*/levels/*/weight", group: types, kind: probability, linked: -2, why: "a type's prior (nature's odds)"}
+  - {match: "event:*/model/config/types/*/levels/*/belief", group: types, kind: probability, linked: -2, why: "the other side's prior about a type"}
+  - {match: "event:*/model/config/types/*/levels/*/own_belief", group: types, kind: probability, linked: -2, why: "the holder's own prior about an unseen type"}
+  - {match: "event:*/model/config/types/*/levels/*/*", group: types, kind: magnitude, why: "a type level's strength, cost or proxy multiplier"}
+  - {match: "event:*/model/config/types/*/prior/*", group: types, kind: probability, linked: -1, why: "a bargaining type's prior"}
+  - {match: "event:*/model/config/types/*/delay_cost/*", group: types, kind: magnitude, why: "a bargaining type's per-period cost"}
+  - {match: "event:*/model/config/script/*/temperaments/*/weight", group: types, kind: probability, linked: -2, why: "an officer's temperament (nature's odds; E48)"}
+  - {match: "event:*/model/config/script/*/temperaments/*/hold_cost", group: structure, fixed: structural, why: "which temperament fires: a steady officer's hold costs less than its loss from war, a by-the-book one's more (E48)"}
+  - {match: "event:*/model/config/script/*/temperaments/*/fire_cost", group: structure, fixed: structural, why: "which temperament fires: a steady officer believes the alarm false, so firing costs it more than holding (E48)"}
+  - {match: "event:*/model/config/script/*/options/*/control", group: incidents, kind: share, why: "the share of a side's officers' hold cost a control order lifts (E48)"}
+  - {match: "event:*/model/config/script/*/fire/hold_cost", group: incidents, kind: magnitude, why: "a leader's cost of waiting after an officer fires: its belief the threat is real times the loss (E48)"}
+  - {match: "event:*/model/config/script/*/roles/*/stakes/*/weight", group: types, kind: probability, linked: -2, why: "a stakes type's prior"}
+  - {match: "event:*/model/config/script/*/roles/*/stakes/*/offsets/*", group: types, kind: signed, why: "a stakes type's offset to the holder's values"}
+  - {match: "event:*/model/config/script/*/roles/*/stakes_beliefs/*/*", group: types, kind: probability, linked: -1, why: "a role's belief about another's stakes"}
+  - {match: "event:*/model/config/script/*/roles/*/resolve_beliefs/*", group: types, kind: probability, why: "a role's belief about another's resolve"}
+  - {match: "event:*/model/config/script/*/roles/*/p_*", group: types, kind: probability, why: "a crisis type's prior"}
+
+  # ---------------------------------------------------------- events: crisis scripts
+  - {match: "event:*/model/config/script/*/accuracy", group: config, kind: probability, why: "an intelligence stage's accuracy"}
+  - {match: "event:*/model/config/script/*/base", group: config, kind: probability, why: "an accident stage's base chance"}
+  - {match: "event:*/model/config/script/*/per_rung", group: config, kind: probability, why: "an accident stage's chance per rung"}
+  - {match: "event:*/model/config/script/*/nuclear_per_rung", group: config, kind: probability, why: "an accident's nuclear share per rung"}
+  - {match: "event:*/model/config/script/*/cap", group: config, kind: probability, why: "an accident stage's cap"}
+  - {match: "event:*/model/config/script/**", group: config, kind: magnitude, why: "an option's cost or multiplier"}
+
+  # ------------------------------------------------- events: family configs (payoffs, costs)
+  - {match: "event:*/model/config/**/values/*", group: payoffs, kind: signed, why: "a hand-set payoff (dead where derived payoffs replace it)"}
+  - {match: "event:*/model/config/values/*/*", group: payoffs, kind: signed, why: "a hand-set payoff (dead where derived payoffs replace it)"}
+  - {match: "event:*/model/config/sponsors/*/settlement/*", group: payoffs, kind: signed, why: "a settlement's value (dead where derived)"}
+  - {match: "event:*/model/config/sides/*/breakdown_value", group: payoffs, kind: signed, why: "a hand-set payoff (dead where derived)"}
+  - {match: "event:*/model/config/sides/*/impasse_value", group: payoffs, kind: signed, why: "a hand-set payoff (dead where derived)"}
+  - {match: "event:*/model/config/consent/*/base", group: payoffs, kind: signed, why: "a consent role's value (dead where derived)"}
+  - {match: "event:*/model/config/consent/*/per_share", group: payoffs, kind: signed, why: "a consent role's value per share (dead where derived)"}
+  - {match: "event:*/model/config/consent/*/veto_value", group: payoffs, kind: signed, why: "a consent role's veto value (dead where derived)"}
+  - {match: "event:*/model/config/clients/*/affinity/*", group: payoffs, kind: signed, why: "a client's pull toward a patron (dead where derived)"}
+  - {match: "event:*/model/config/clients/*/nonaligned", group: payoffs, kind: signed, why: "a client's pull toward non-alignment (dead where derived)"}
+  - {match: "event:*/model/config/patrons/*/gain/*", group: payoffs, kind: signed, why: "a patron's gain from a client (dead where derived)"}
+  - {match: "event:*/model/config/patrons/*/loss/*", group: payoffs, kind: signed, why: "a patron's loss from a client (dead where derived)"}
+  - {match: "event:*/model/config/surplus", group: payoffs, kind: magnitude, why: "the value at stake in a bargain"}
+  - {match: "event:*/model/config/sides/*/discount", group: config, kind: probability, why: "a side's per-period discount"}
+  - {match: "event:*/model/config/breakdown/*", group: config, kind: probability, why: "talks' breakdown risk"}
+  - {match: "event:*/model/config/contest/win_probability", group: config, kind: probability, why: "the contest's odds per period"}
+  - {match: "event:*/model/config/p_strong", group: config, kind: probability, why: "an uprising's chance of strength"}
+  - {match: "event:*/model/config/report_accuracy", group: config, kind: probability, why: "intelligence accuracy"}
+  - {match: "event:*/model/config/clash_risk", group: config, kind: probability, why: "chance a confrontation becomes a clash"}
+  - {match: "event:*/model/config/quagmire_prob", group: config, kind: probability, why: "chance an intervention becomes a quagmire"}
+  - {match: "event:*/model/config/deployment/*", group: config, kind: share, why: "the share of strength in place in the first quarter"}
+  - {match: "event:*/model/identities/*/stalemate_share", group: config, kind: share, why: "the share an identity role governs after a stalemate"}
+  - {match: "event:*/model/config/clients/*/temperature", group: config, kind: magnitude, why: "a computer-run client's logit temperature"}
+  - {match: "event:*/model/config/**", group: config, kind: magnitude, why: "a cost, capacity, strength or rate"}
+
+# Entries: single numbers with what is known about them. `value` is a check (the loader
+# fails if the data holds another value). An entry's basis, kind, range (absolute),
+# factor or logit override its class rule; `sample: false` lists a range but never draws.
+entries:
+  # ---------------------------------------------------------------- goals (goals.yaml)
+  "goals:kappa":
+    value: 100.0
+    range: [50.0, 200.0]
+    placeholder: true
+    source: "GOALS.md section 7; its default is deferred to the sweep (section 12)"
+    note: "converts goal-score units into sub-game payoff units for derived payoffs; family costs (effort, signals, escalation) are in sub-game units, so kappa sets their weight against outcomes"
+  "goals:lookahead/discount":
+    value: 0.97
+    kind: probability
+    range: [0.94, 0.99]
+    placeholder: true
+    source: "E25"
+    note: "per quarter (about 11% a year): the discount on follow-on cutscenes in derived payoffs"
+  "goals:components/economy/scale":
+    value: 4.0
+    note: "the economy component reaches 1 after GDP quadruples from 1945; a normalization that sets the economy's weight against the other components"
+  "goals:components/security/nuclear/weight":
+    value: 0.6
+    source: "GOALS.md section 4"
+    note: "nuclear forces' weight in military strength (the linear model; the saturating Weibull curve stays off until data grounding)"
+  "goals:components/security/buffer/weight":
+    value: 0.25
+    placeholder: true
+    source: "GOALS.md section 16 (decision 9, 2026-10-11; E23)"
+    note: "holding every buffer region adds this to security, as much as moving the military balance from 0.50 to 0.75"
+  "goals:components/allies/height":
+    value: 0.5
+    placeholder: true
+    source: "GOALS.md section 14 (E16)"
+    note: "an ally's value inside its band"
+  "goals:components/allies/cost":
+    value: 0.5
+    placeholder: true
+    source: "GOALS.md section 14"
+    note: "past its ceiling an ally is worth -cost x height"
+  "goals:components/allies/smoothness":
+    value: 0.2
+    placeholder: true
+    source: "GOALS.md section 14"
+    note: "the band's edge width relative to its floor or ceiling"
+  "goals:components/allies/bands/USSR/PRC/ceiling":
+    value: 0.4
+    source: "GOALS.md section 14; WRITEUP 3.6 (the 1950 treaty; nuclear help halted in June 1959)"
+    note: "Stalin and his successors wanted China clearly junior; the size is judgment"
+  "goals:components/allies/bands/USA/UK/ceiling":
+    value: 0.8
+    source: "GOALS.md section 14 (Washington resisted allies' independent nuclear forces: the MLF, Nassau 1962)"
+    note: "the size is judgment"
+  "goals:components/allies/bands/USA/FRA/ceiling":
+    value: 0.8
+    source: "GOALS.md section 14"
+    note: "the size is judgment"
+  "goals:components/allies/bands/USA/PRC/ceiling":
+    value: 0.5
+    source: "GOALS.md section 14"
+    note: "the size is judgment"
+  "goals:components/allies/bands/PRC/USSR/ceiling":
+    value: 3.0
+    source: "GOALS.md section 14"
+    note: "Mao accepted a far stronger patron, within limits; the size is judgment"
+
+  # ------------------------------------------------------- powers.yaml: terminal terms
+  "powers:rewards/nuclear_war_penalty":
+    value: 2.0
+    range: [1.0, 4.0]
+    source: "user decision 2026-10-20 (QUESTIONS Q27, E46): one fixed catastrophe for every power"
+    note: "goal-score units; four times the US's 1962 goal score (0.50); at kappa 100, -200, so a 1% chance costs 2, a typical crisis stake (Cuba, E12: +1.86 / -3.48); was 20, under which a 0.1% chance outweighed every stake"
+  "powers:powers/USA/casualty_sensitivity": {value: 1.0, fixed: structural, note: "the unit: a democracy's sensitivity (casualty_drain carries the size)"}
+  "powers:powers/UK/casualty_sensitivity": {value: 1.0, range: [0.5, 1.5], basis: judgment, source: "Mueller (1973) for democracies generally", note: "a democracy, as the US"}
+  "powers:powers/FRA/casualty_sensitivity": {value: 1.0, range: [0.5, 1.5], basis: judgment, source: "Horne, A Savage War of Peace (1977): Algeria brought down the Fourth Republic", note: "a democracy, as the US"}
+  "powers:powers/USSR/casualty_sensitivity": {value: 0.3, range: [0.1, 0.6], basis: literature, source: "Weeks, International Organization 62 (2008): autocratic audience costs are real but weaker; Kalinovsky, A Long Goodbye (2011)", note: "an autocracy"}
+  "powers:powers/PRC/casualty_sensitivity": {value: 0.3, range: [0.1, 0.6], basis: literature, source: "Weeks (2008)", note: "an autocracy"}
+  "goals:risk/alpha":
+    value: 0.88
+    range: [0.6, 1.0]
+    basis: literature
+    source: "Tversky and Kahneman, J. Risk and Uncertainty 5 (1992); E48"
+    note: "prospect theory's curvature for gains (1 = risk-neutral)"
+  "goals:risk/beta": {value: 0.88, range: [0.6, 1.0], basis: literature, source: "Tversky and Kahneman (1992)", note: "the curvature for losses: below 1 a leader facing losses gambles"}
+  "goals:risk/lambda":
+    value: 2.25
+    range: [1.0, 3.0]
+    basis: literature
+    source: "Tversky and Kahneman (1992); meta-analyses find about 1.8-2.0 (Brown et al., J. Econ. Lit. 62, 2024)"
+    note: "loss aversion: a loss weighs lambda times an equal gain"
+  # defence burdens (E49 strategy-layer review): opening values held for the whole game
+  "powers:powers/USA/initial/burden": {value: 0.1, range: [0.05, 0.14], basis: data, source: "Historical Statistics of the United States; SIPRI: about 8% of GDP on average 1950-90, 14% at the Korean War peak (1953), 5% in the late 1970s", note: "the US defence burden"}
+  "powers:powers/USSR/initial/burden": {value: 0.2, range: [0.12, 0.25], basis: data, source: "CIA estimates 12-17% (Firth and Noren, Soviet Defense Spending, 1998); later Western estimates up to 25% (Ellman, 2005)", note: "the Soviet defence burden"}
+  "powers:powers/PRC/initial/burden": {value: 0.2, range: [0.05, 0.25], basis: judgment, source: "Shambaugh, Modernizing China's Military (2002): estimates vary widely", note: "the Chinese defence burden"}
+  "powers:powers/UK/initial/burden": {value: 0.12, range: [0.05, 0.12], basis: data, source: "SIPRI; UK Defence Statistics: about 8-10% in the early 1950s, 5% by the 1980s", note: "the British defence burden"}
+  "powers:powers/FRA/initial/burden": {value: 0.08, range: [0.03, 0.08], basis: data, source: "SIPRI: about 6-7% in the 1950s (Indochina, Algeria), 3-4% from the 1970s", note: "the French defence burden"}
+  "powers:rewards/loss_floor":
+    value: 0.1
+    source: "user decision 2026-10-10 (GOALS.md section 7; E17)"
+    note: "losing a seat costs max(goal score held, loss_floor), so a weak or negative score never makes losing cheap"
+
+  # ------------------------------------------ powers.yaml: technology rates (calibrated)
+  # Fit so that each milestone cutscene fires near its historical date in the replay (the
+  # replay test allows +-2 quarters). The uncertainty in the timing of technology lives in
+  # these rates, so the technology thresholds themselves are fixed.
+  "powers:powers/USA/tech_rates/nuclear":
+    value: 0.6
+    basis: calibrated
+    note: "the US H-bomb (tech_nuclear 2.0) in 1952-Q4"
+  "powers:powers/USA/tech_rates/missile":
+    value: 1.0
+    basis: calibrated
+    note: "SDI (US tech_missile 2.0) in 1983-Q1"
+  "powers:powers/USA/tech_rates/space":
+    value: 0.48
+    basis: calibrated
+    source: "E35 (0.5 -> 0.48)"
+    note: "Apollo 11 (3.5) in 1969-Q3; it also times the first US satellite (1.0) and the first American in space (1.6), which have no replay date"
+  "powers:powers/USSR/tech_rates/nuclear":
+    value: 1.0
+    basis: calibrated
+    note: "the Soviet bomb (1.0) in 1949-Q3 and H-bomb (2.0) in 1953-Q3"
+  "powers:powers/USSR/tech_rates/missile":
+    value: 1.2
+    basis: calibrated
+    note: "Soviet missiles in the U-2 incident (2.5, 1960-Q2) and the Cuban crisis (1.0, 1962-Q4) conditions"
+  "powers:powers/USSR/tech_rates/space":
+    value: 1.0
+    basis: calibrated
+    note: "Sputnik (1.0, 1957-Q4) and Gagarin (1.6, 1961-Q2)"
+  "powers:powers/PRC/tech_rates/nuclear":
+    value: 2.3
+    basis: calibrated
+    source: "2026-10-10 (2.2 -> 2.3, after insurgent war costs slowed the first bomb to 1965-Q2)"
+    note: "China's first bomb (1.0) in 1964-Q4"
+  "powers:powers/UK/tech_rates/nuclear":
+    value: 1.9
+    basis: calibrated
+    note: "Britain's first bomb (1.0) in 1952-Q4"
+  "powers:powers/FRA/tech_rates/nuclear":
+    value: 2.8
+    basis: calibrated
+    note: "France's first bomb (1.0) in 1960-Q1"
+  "powers:powers/PRC/tech_rates/missile": {value: 1.0, note: "no milestone reads it"}
+  "powers:powers/PRC/tech_rates/space": {value: 0.6, note: "no milestone reads it"}
+  "powers:powers/UK/tech_rates/missile": {value: 0.8, note: "no milestone reads it"}
+  "powers:powers/UK/tech_rates/space": {value: 0.3, note: "no milestone reads it"}
+  "powers:powers/FRA/tech_rates/missile": {value: 1.0, note: "no milestone reads it"}
+  "powers:powers/FRA/tech_rates/space": {value: 0.4, note: "no milestone reads it"}
+
+  # ------------------------------------------------------ dynamics (dynamics.DEFAULTS)
+  "dynamics:depreciation_conventional": {value: 0.12, note: "conventional forces lose 12% a year (the pre-0.2 arms-competition model's delta)"}
+  "dynamics:depreciation_nuclear": {value: 0.05, note: "nuclear forces lose 5% a year"}
+  "dynamics:control_effectiveness": {value: 0.8, note: "the arms-competition model's b: budget into forces"}
+  "dynamics:conventional_scale": {value: 15.0, note: "model units of conventional force per unit of budget"}
+  "dynamics:nuclear_scale": {value: 30.0, note: "model units of nuclear force per unit of budget"}
+  "dynamics:tech_scale":
+    value: 5.0
+    fixed: structural
+    note: "a unit: technology per unit of science budget; the calibrated technology rates carry the uncertainty, so drawing this too would count it twice"
+  "dynamics:investment_growth":
+    value: 0.15
+    basis: literature
+    range: [0.05, 0.3]
+    placeholder: true
+    source: "Alptekin and Levine 2012 (small positive); Simpartl 2024 (small negative); Dunne and Tian's surveys; user decision 2026-10-13 (E35)"
+    note: "growth points per 1% of GDP moved between investment and the military; the literature finds small effects of either sign, so the range stays small"
+  "dynamics:burden_drag": {value: 0.05, note: "growth lost per unit of military burden above the reference"}
+  "dynamics:aid_rate": {value: 0.06, note: "influence a year from aid at a region of focus, times the square root of the economy"}
+  "dynamics:covert_rate": {value: 0.05, note: "influence a year from covert action at a region of focus"}
+  "dynamics:covert_destabilize": {value: 0.08, note: "stability a year that covert action costs the region"}
+  "dynamics:containment":
+    value: 0.3
+    kind: share
+    placeholder: true
+    source: "user decision 2026-10-13 (E35)"
+    note: "share of a pressured power's aid and covert gains lost"
+  "dynamics:influence_decay": {value: 0.02, note: "influence lost a year everywhere"}
+  "dynamics:region_stability_reversion": {value: 0.25, note: "a region's stability returns this share a year toward its base"}
+  "dynamics:relations_step":
+    value: 0.02
+    source: "E35"
+    note: "a relation's change a quarter from one side's pressure (half a step from one side's engagement); powers.yaml overrides the default 0.03"
+  "dynamics:pressure_tension": {value: 0.004, note: "tension a quarter from each pressuring side"}
+  "dynamics:arms_tension": {value: 0.01, note: "tension per unit of superpower nuclear growth"}
+  "dynamics:tension_floor": {value: 0.15, kind: share, note: "tension decays toward this floor"}
+  "dynamics:tension_decay": {value: 0.25, note: "share of tension above the floor lost a year"}
+  "dynamics:stability_reversion": {value: 0.2, note: "domestic stability returns this share a year toward its target"}
+  "dynamics:stability_target": {value: 0.7, kind: share, note: "the stability a power reverts to at reference growth and no war"}
+  "dynamics:stability_growth_effect": {value: 2.0, note: "the stability target's change per unit of growth above the reference"}
+  "dynamics:reputation_reversion": {value: 0.03, note: "credibility returns this share a year toward its target"}
+  "dynamics:war_growth_drag": {value: 0.01, note: "growth lost a year at full war effort"}
+  "dynamics:war_stability_drain":
+    value: 0.04
+    note: "the stability target's fall per unit of war effort (x4); powers.yaml overrides the default 0.01"
+  "dynamics:war_tension": {value: 0.002, note: "tension a quarter per unit of war effort"}
+  "dynamics:casualty_drain":
+    value: 0.25
+    range: [0.1, 0.5]
+    basis: judgment
+    source: "Mueller, War, Presidents and Public Opinion (1973); Gartner and Segura, J. Conflict Resolution 42 (1998); E48"
+    note: "the stability target's fall per quarter of direct effort (times casualty_sensitivity). Chain: Johnson's approval fell about 0.35 from 1965 to 1968 over about 16 quarters of direct effort; with reversion 5% a quarter a sustained drop D shows 56% of itself by then, so D is 0.31-0.62 if a half to all of the fall was the war; the generic war drain gives 0.18, leaving 0.13-0.44 for casualties"
+  "dynamics:burden_reference": {value: 0.1, kind: share, note: "a burden of 10% of GDP costs no growth (moved from the code, 2026-10-17)"}
+  "dynamics:stability_growth_reference": {value: 0.03, note: "growth above 3% a year raises stability (moved from the code, 2026-10-17)"}
+  "dynamics:missile_from_nuclear": {value: 0.5, kind: share, note: "the share of nuclear spending that advances missiles (moved from the code, 2026-10-17)"}
+  "dynamics:reputation_target": {value: 0.5, note: "credibility drifts toward 0.5 (E39; moved from the code, 2026-10-17)"}
+  "dynamics:one_sided_warmth":
+    value: 0.5
+    kind: share
+    source: "user decision 2026-10-13 (E35): warmth needs both sides"
+    note: "one engaging side warms a relation by this share of a step (moved from the code, 2026-10-17)"
+
+  # ------------------------------------------------------------ constants in the code
+  "code:dynamics.DT": {value: 0.25, fixed: structural, note: "years per quarter"}
+  "code:dynamics.TECH_CAP": {value: 10.0, fixed: structural, note: "technology stocks stop here"}
+  "code:dynamics.WAR_EFFORT_SCALE": {value: 4.0, fixed: structural, note: "a unit, redundant with war_stability_drain"}
+  "code:dynamics.NUCLEAR_STRENGTH_WEIGHT": {value: 0.6, fixed: score, note: "nuclear forces in the pre-goals score's military strength"}
+  "code:state.CONTROL_THRESHOLD": {value: 0.5, fixed: structural, note: "the influence share at which a power controls a region"}
+  "code:effects.NEUTRAL_CAP": {value: 0.35, fixed: structural, note: "set_controller: a neutralized region caps every power's influence here"}
+  "code:effects.CONTROL_SHARE": {value: 0.65, fixed: structural, note: "set_controller: a region handed to a power lifts its influence here"}
+  "code:goals.BOMB_THRESHOLD": {value: 1.0, fixed: structural, note: "tech_nuclear at the first tested weapon"}
+  "code:engine.EFFORT/low": {value: 0.3333333333333333, fixed: structural, note: "a war's effort levels"}
+  "code:engine.EFFORT/high": {value: 0.6666666666666666, fixed: structural, note: "a war's effort levels"}
+  "code:derive.FOLLOW_ON_ROLLOUTS": {value: 200, fixed: method, note: "decision values: rollouts of a later major event"}
+  "code:derive.STRATIFIED_ROLLOUTS": {value: 72, fixed: method, note: "decision values: rollout budget over the opening cells (E39)"}
+  "engine:baseline_temperature":
+    value: 0.1
+    range: [0.05, 0.2]
+    sample: false
+    source: "user decision 2026-10-11 (E26)"
+    note: "the logit temperature of computer-run reference play, in payoff units (a 0.04 gap plays 60/40); set per run with --temperature, not drawn"
+  "engine:baseline_iterations": {value: 300, fixed: method, note: "CFR+ iterations where a tree is solved exactly"}
+
+  # --------------------------------- the Chinese Civil War (E17-E18, E40; era1 yaml)
+  "event:chinese_civil_war/model/config/types/a/levels/strong/weight":
+    value: 0.7
+    placeholder: true
+    source: "E40 (open: grounding these priors)"
+    note: "nature's chance that the Communists are strong; with the cohesion prior it sets the campaign split (strong vs brittle: Communist victory 6 of 8)"
+  "event:chinese_civil_war/model/config/types/a/levels/strong/belief":
+    value: 0.2
+    basis: literature
+    source: "Taylor, The Generalissimo (2009); Westad, Decisive Encounters (2003)"
+    note: "Chiang's prior: he underrated the Communists ('bandits'; Chen Cheng promised victory in three to six months)"
+  "event:chinese_civil_war/model/config/types/a/levels/strong/strength": {value: 1.3, note: "a strong Communist army's battle multiplier"}
+  "event:chinese_civil_war/model/config/types/a/levels/weak/strength": {value: 0.8, note: "a weak Communist army's battle multiplier"}
+  "event:chinese_civil_war/model/config/types/b/levels/solid/weight":
+    value: 0.3
+    placeholder: true
+    source: "E40 (open: grounding these priors)"
+    note: "nature's chance that the Nationalist armies are solid; no one could see it in 1946"
+  "event:chinese_civil_war/model/config/types/b/levels/solid/belief":
+    value: 0.3
+    basis: literature
+    source: "Mao to Anna Louise Strong, August 1946 ('all reactionaries are paper tigers')"
+    note: "Mao's prior: he was sure the Nationalist armies would crumble"
+  "event:chinese_civil_war/model/config/types/b/levels/solid/own_belief":
+    value: 0.9
+    basis: literature
+    source: "Taylor 2009; Westad 2003"
+    note: "Chiang's own prior: he trusted his armies"
+  "event:chinese_civil_war/model/config/types/b/levels/solid/strength": {value: 1.2, note: "solid Nationalist armies' battle multiplier"}
+  "event:chinese_civil_war/model/config/types/b/levels/brittle/strength": {value: 0.8, note: "brittle Nationalist armies' battle multiplier"}
+  "event:chinese_civil_war/model/config/gamma":
+    value: 2.0
+    basis: literature
+    range: [1.0, 2.0]
+    source: "Lanchester 1916; user decision 2026-10-14 (E40)"
+    note: "the contest exponent: 1 is Lanchester's linear law (guerrilla war), 2 his square law (aimed fire, the massed campaigns of 1948-49)"
+  "event:chinese_civil_war/model/config/momentum":
+    value: 0.04
+    placeholder: true
+    source: "user decision 2026-10-14 (E40); about 1.8 million Nationalist soldiers joined the PLA"
+    note: "each net step moves this share of the two local strengths from the loser to the winner"
+  "event:chinese_civil_war/model/config/sponsors/USA/direct_cost":
+    value: 0.75
+    source: "user decision 2026-10-14 (E40): Truman ruled out troops (Marshall to Congress, February 1948)"
+    note: "a quarter of US troops in China; sized so that intervention stays rare (9% of 1946 runs with the historical types)"
+  "event:chinese_civil_war/model/config/sponsors/KMT/cost_scale": {value: 0.2, note: "the computer-run Nationalists' effort cost multiplier"}
+  "event:chinese_civil_war/model/identities/KMT/stalemate_share":
+    value: 0.5
+    source: "user decision 2026-10-14 (E40)"
+    note: "the share of China the Nationalists govern after a stalemate (its effects encode an even split)"
+
+  # ---------------------------------------------------- the Marshall Plan (E19-E26)
+  # Pulls anchored on 1945-47 vote shares (Nohlen and Stover, Elections in Europe, 2010):
+  # pull = 0.2 + 0.4 ln(share / non-aligned share). The votes are data; the mapping is a
+  # stated formula (hence calibrated, not data). The binding intercepts carry the anchor.
+  "event:marshall_plan/model/bindings/0/base": {value: 0.617, basis: calibrated, source: "Italy 1946: anti-communist parties 54.5%, Popular Front 39.6% (Nohlen and Stover 2010)", note: "Italy's pull toward the US at zero Mediterranean stability"}
+  "event:marshall_plan/model/bindings/1/base": {value: 1.435, basis: calibrated, source: "Italy 1946 (Nohlen and Stover 2010)", note: "Italy's pull toward the USSR at zero Mediterranean stability"}
+  "event:marshall_plan/model/bindings/2/base": {value: 0.301, basis: calibrated, source: "Benelux, Scandinavia, Austria 1944-46: communists 10.4% (Nohlen and Stover 2010)", note: "the smaller democracies' pull toward the US"}
+  "event:marshall_plan/model/bindings/3/base": {value: 0.537, basis: calibrated, source: "Nohlen and Stover 2010", note: "the smaller democracies' pull toward the USSR"}
+  "event:marshall_plan/model/bindings/4/base": {value: 0.599, basis: calibrated, source: "Czechoslovakia 1946: communists 38% (Nohlen and Stover 2010)", note: "Czechoslovakia's pull toward the USSR before coercion"}
+  "event:marshall_plan/model/config/clients/CZE/affinity/USA": {value: 0.69, basis: calibrated, source: "Czechoslovakia 1946: democratic parties 48% (Nohlen and Stover 2010)", note: "Czechoslovakia's pull toward the US"}
+  "event:marshall_plan/model/config/patrons/USSR/control/CZE":
+    value: 1.2
+    source: "user decision 2026-10-11 (E22): no Soviet troops in Prague; Yugoslavia defied Stalin a year later"
+    note: "what Czechoslovakia loses by defying Stalin's forbid: about 1 in 7 defies when the US offers aid"
+  "event:marshall_plan/model/config/patrons/USSR/control/EAST":
+    value: 2.0
+    source: "E22: Soviet troops and communist-run police"
+    note: "more than the full US offer (1.2), so defiance is about 1 in 100"
+  "event:marshall_plan/model/config/patrons/USA/offer_value/aid": {value: 0.8, note: "an offer's value to a client (offers stay game parameters)"}
+  "event:marshall_plan/model/config/patrons/USA/offer_value/aid_guarantee": {value: 1.2, note: "the full plan is worth about 1.2 to Britain or France at kappa 100"}
+  "event:marshall_plan/model/config/patrons/USA/offer_cost/aid_guarantee": {value: 0.3, note: "per aligned client; the full plan costs the US about 0.55 in goal units"}
+
+  # -------------------------------------------- the Berlin Blockade (E20-E21; hold-out)
+  "event:berlin_blockade/model/config/types/A/prior/strong": {value: 0.5, placeholder: true, source: "E21 (swept)", note: "the West's prior strength: maximal uncertainty, not fitted"}
+  "event:berlin_blockade/model/config/types/B/prior/strong": {value: 0.5, placeholder: true, source: "E21 (swept)", note: "the Soviet prior strength: maximal uncertainty, not fitted"}
+  "event:berlin_blockade/model/config/types/A/delay_cost/strong": {value: 0.04, placeholder: true, note: "per-quarter cost of carrying on, spread around the old common value 0.08"}
+  "event:berlin_blockade/model/config/types/A/delay_cost/weak": {value: 0.16, placeholder: true, note: "per-quarter cost of carrying on"}
+  "event:berlin_blockade/model/config/types/B/delay_cost/strong": {value: 0.05, placeholder: true, note: "per-quarter cost of carrying on, around the old 0.10"}
+  "event:berlin_blockade/model/config/types/B/delay_cost/weak": {value: 0.2, placeholder: true, note: "per-quarter cost of carrying on"}
+  "event:berlin_blockade/model/config/contest/win_probability":
+    value: 0.6
+    placeholder: true
+    source: "Miller, To Save a City (2000): 2,000-2,500 t/day in July 1948 against about 4,500 needed; about 8,000 by spring 1949"
+    note: "the West's position gains a quarter with this probability; rational play reproduces the standoff only below 0.5 (E21)"
+
+  # ------------------------------------------------------ the Korean War (E27-E39)
+  "event:korean_war/model/config/types/a/levels/resolute/belief":
+    value: 0.1
+    basis: literature
+    source: "Weathersby 1993; Goncharov, Lewis and Xue 1993"
+    note: "Moscow's and Pyongyang's prior on a resolute US: Stalin told Kim in April 1950 that US intervention was unlikely"
+  "event:korean_war/model/config/types/a/levels/firm/belief": {value: 0.15, basis: literature, source: "Weathersby 1993", note: "Moscow's prior on a firm US"}
+  "event:korean_war/model/config/types/a/levels/wavering/belief": {value: 0.25, basis: literature, source: "Weathersby 1993", note: "Moscow's prior on a wavering US"}
+  "event:korean_war/model/config/types/a/levels/resolute/weight": {value: 0.35, placeholder: true, note: "nature's chance of a resolute US (Truman committed forces within days)"}
+  "event:korean_war/model/config/types/a/levels/firm/weight": {value: 0.3, placeholder: true, note: "nature's chance of a firm US"}
+  "event:korean_war/model/config/types/a/levels/wavering/weight": {value: 0.25, placeholder: true, note: "nature's chance of a wavering US"}
+  "event:korean_war/model/config/types/a/levels/uncommitted/weight": {value: 0.1, placeholder: true, note: "nature's chance of a US that would not fight for Korea (the Joint Chiefs' 1947 judgment)"}
+  "event:korean_war/model/config/types/a/levels/resolute/cost": {value: 0.6, placeholder: true, note: "a resolute US's effort cost multiplier"}
+  "event:korean_war/model/config/types/a/levels/firm/cost": {value: 2.5, placeholder: true, note: "a firm US's effort cost multiplier"}
+  "event:korean_war/model/config/types/a/levels/wavering/cost": {value: 8.0, placeholder: true, note: "a wavering US's effort cost multiplier (a weak US redefined as one that would not fight seriously, E29)"}
+  "event:korean_war/model/config/types/a/levels/uncommitted/cost": {value: 100.0, placeholder: true, source: "E38", note: "so that even one quarter of war costs more than abandoning Korea (at x40 it still fought a quarter)"}
+  "event:korean_war/model/config/types/b/levels/strong/belief": {value: 0.15, basis: literature, source: "the June 1950 surprise; 'home by Christmas' after Inchon", note: "Washington's prior on strong Communist forces"}
+  "event:korean_war/model/config/types/b/levels/steady/belief": {value: 0.35, basis: literature, note: "Washington's prior on steady Communist forces"}
+  "event:korean_war/model/config/types/b/levels/strong/weight": {value: 0.3, placeholder: true, note: "nature's chance of strong Communist forces"}
+  "event:korean_war/model/config/types/b/levels/steady/weight": {value: 0.4, placeholder: true, note: "nature's chance of steady Communist forces"}
+  "event:korean_war/model/config/types/PRC/levels/committed/weight": {value: 0.7, placeholder: true, note: "nature's chance that China would defend its border ('lips and teeth'); Mao overrode a divided Politburo in October 1950"}
+  "event:korean_war/model/config/types/PRC/levels/committed/belief":
+    value: 0.2
+    basis: literature
+    source: "the October 1950 US estimates; MacArthur at Wake Island, 15 October ('very little'); Zhou's 3 October warning through Panikkar discounted"
+    note: "Washington's prior that China would intervene in force"
+  "event:korean_war/model/config/types/PRC/levels/uncommitted/cost": {value: 10.0, placeholder: true, note: "an uncommitted China's effort cost multiplier"}
+  "event:korean_war/model/config/types/USSR/levels/holds_out/weight": {value: 0.8, placeholder: true, source: "Weathersby 1993: Stalin was the main obstacle to an armistice", note: "nature's chance that Moscow holds out"}
+  "event:korean_war/model/config/types/USSR/levels/holds_out/belief": {value: 0.1, basis: literature, source: "E39: Mao in 1950 and Washington did not foresee Stalin's two-year hold-out", note: "the others' prior that Moscow holds out"}
+  "event:korean_war/model/config/weariness/high": {value: 0.035, placeholder: true, source: "Mueller, War, Presidents and Public Opinion (1973); E36", note: "support lost a quarter at high effort"}
+  "event:korean_war/model/config/weariness/direct": {value: 0.07, placeholder: true, source: "Mueller 1973; E36", note: "support lost a quarter at direct effort: it gives out after about 14 quarters"}
+  "event:korean_war/model/config/deployment/USA": {value: 0.3, placeholder: true, source: "user decision 2026-10-12 (E29): Task Force Smith, the Pusan perimeter", note: "the share of US strength in place in the first quarter"}
+  "event:korean_war/model/config/red_lines/PRC/audience_cost": {value: 0.2, note: "China's cost of warning and then not entering (hand-set: the PRC:bluffed tag is not derived here)"}
+
+  # --------------------------------------------------------- the Suez Crisis (E41)
+  "event:suez_crisis/model/config/script/0/roles/USSR/stakes/committed/weight":
+    value: 0.1
+    basis: literature
+    source: "Kyle, Suez (1991); Khrushchev later admitted the bluff; no forces were readied"
+    note: "nature's chance that Moscow would fight for Nasser"
+  "event:suez_crisis/model/config/script/0/roles/USSR/stakes/committed/offsets/a_prevails":
+    value: -7.5
+    placeholder: true
+    source: "E41"
+    note: "sized so that a committed USSR intervenes if Britain presses on, after paying its intervention's cost"
+  "event:suez_crisis/model/config/script/0/roles/USSR/stakes_beliefs/UK/committed":
+    value: 0.3
+    placeholder: true
+    source: "Kyle 1991; Nichols, Eisenhower 1956 (2011): the U-2 checks for Soviet forces in Syria"
+    note: "London's belief that Moscow was committed"
+  "event:suez_crisis/model/config/script/0/roles/USSR/stakes_beliefs/FRA/committed": {value: 0.3, placeholder: true, source: "Kyle 1991", note: "Paris's belief that Moscow was committed"}
+  "event:suez_crisis/model/config/script/0/roles/USSR/stakes_beliefs/USA/committed": {value: 0.3, placeholder: true, source: "Nichols 2011", note: "Washington's belief that Moscow was committed"}
+  "event:suez_crisis/model/config/script/0/roles/USA/stakes_beliefs/UK/acquiescent":
+    value: 0.8
+    basis: literature
+    source: "Macmillan to Eden after seeing Eisenhower, 25 September 1956: 'I know Ike. He will lie doggo' (Kyle 1991)"
+    note: "Eden's belief that Washington would acquiesce; it was opposed"
+  "event:suez_crisis/model/config/script/0/roles/USA/stakes_beliefs/FRA/acquiescent": {value: 0.8, basis: literature, source: "Kyle 1991", note: "Paris's belief that Washington would acquiesce"}
+  "event:suez_crisis/model/config/script/0/roles/USA/stakes/acquiescent/offsets/a_prevails": {value: 1.0, placeholder: true, source: "E41", note: "an acquiescent US would put the alliance above the Arab world"}
+  "event:suez_crisis/model/bindings/0/base":
+    value: 4.65
+    source: "Kunz, The Economic Diplomacy of the Suez Crisis (1991): reserves fell about $279 million in November 1956"
+    note: "US financial pressure's cost to Britain: 1.5 at the 1956 economy, rising as Britain weakens"
+  "event:suez_crisis/model/config/script/8/per_rung": {value: 0.02, note: "the accident stage's chance per rung of a regional war (no nuclear share, E41)"}
+  # -------------------------------------- the Cuban Missile Crisis (E47; light review)
+  "event:cuban_missile_crisis/outcomes/b_prevails/additions/1/multiply/factor":
+    value: 1.3
+    basis: literature
+    range: [1.15, 1.5]
+    source: "Fursenko and Naftali, 'One Hell of a Gamble' (1997): 36 R-12 and 24 R-14 missiles planned for Cuba; Garthoff, Reflections on the Cuban Missile Crisis (1989): some 44 Soviet ICBMs and 155 intercontinental bombers in October 1962"
+    note: "Soviet strategic forces if the missiles stay: about 60 launchers on about 200, +30%"
+  "event:cuban_missile_crisis/model/config/script/0/roles/USA/p_high_resolve": {value: 0.5, placeholder: true, source: "E47", note: "nature's chance that Washington is resolved: agnostic"}
+  "event:cuban_missile_crisis/model/bindings/2/base": {value: -0.18, placeholder: true, source: "E47", note: "anchors Khrushchev's prior that Kennedy is resolved at 0.25 at the 1962 replay world (US credibility 0.86)"}
+  "event:cuban_missile_crisis/model/bindings/2/terms/powers.USA.credibility":
+    value: 0.5
+    placeholder: true
+    source: "Fursenko and Naftali 1997: Khrushchev expected a fait accompli Kennedy would accept, reading him as weak after the Bay of Pigs and Vienna"
+    note: "Khrushchev's prior on US resolve rises with US credibility (review rule: bind an adversary's beliefs to credibility only where its record shows it)"
+  "event:cuban_missile_crisis/model/bindings/3/base": {value: -0.12, placeholder: true, source: "E47", note: "anchors Washington's prior that Soviet forces are nuclear-ready at 0.15 at the replay world (space technology 2.73)"}
+  "event:cuban_missile_crisis/model/bindings/3/terms/powers.USA.tech_space":
+    value: 0.1
+    placeholder: true
+    source: "Dobbs, One Minute to Midnight (2008): the CIA estimated about 10,000 Soviet troops (about 42,000) and knew of no tactical nuclear warheads (about 100, revealed in 1992)"
+    note: "Washington's prior on Soviet readiness approaches nature's with its intelligence capacity"
+  # officers (E48): the risk of nuclear war comes from documented incidents
+  "event:cuban_missile_crisis/model/config/script/10/per_rung":
+    value: 0.8
+    range: [0.5, 0.95]
+    basis: data
+    source: "Savranskaya, J. Strategic Studies 28 (2005): all four Foxtrots that met the quarantine were forced to surface"
+    note: "chance a nuclear-armed submarine is harassed into an incident, per rung, while the quarantine goes on"
+  "event:cuban_missile_crisis/model/config/script/10/temperaments/jumpy/weight":
+    value: 0.1
+    range: [0.03, 0.3]
+    source: "Savranskaya (2005); Dobbs (2008): of four boats one came close, B-59, where Savitsky wanted to fire and Arkhipov refused"
+    note: "chance a boat's command fires its nuclear torpedo once harassed (no Arkhipov aboard)"
+  "event:cuban_missile_crisis/model/config/script/10/temperaments/steady/weight": {value: 0.9, source: "as jumpy", note: "1 - the jumpy share"}
+  "event:cuban_missile_crisis/model/config/script/10/fire/hold_cost":
+    value: 250.0
+    range: [50.0, 500.0]
+    source: "McNamara at the 1992 Havana conference (Blight, Allyn and Welch, Cuba on the Brink, 1993): a nuclear attack on US forces would have brought nuclear retaliation, 'no doubt'"
+    note: "Kennedy's cost of not retaliating after a nuclear torpedo; above the catastrophe's 200 he retaliates"
+  "event:cuban_missile_crisis/model/config/script/6/per_rung":
+    value: 0.5
+    range: [0.2, 0.8]
+    source: "May and Zelikow, The Kennedy Tapes (1997): U-2 flights over Cuba went on daily; the SAMs went active on 27 October"
+    note: "chance of an armed overflight incident, per rung"
+  "event:cuban_missile_crisis/model/config/script/6/temperaments/jumpy/weight":
+    value: 0.5
+    range: [0.2, 0.8]
+    source: "Fursenko and Naftali, One Hell of a Gamble (1997): Generals Grechko and Garbuz ordered Anderson's U-2 shot down without Moscow's order"
+    note: "chance a SAM command fires under delegated authority"
+  "event:cuban_missile_crisis/model/config/script/6/temperaments/steady/weight": {value: 0.5, source: "as jumpy", note: "1 - the jumpy share"}
+  "event:cuban_missile_crisis/model/config/script/6/fire/hold_cost":
+    value: 0.5
+    range: [0.1, 2.0]
+    source: "May and Zelikow (1997): the ExComm had agreed to strike the SAM sites if a U-2 was shot down; Kennedy held off"
+    note: "Kennedy's cost of not retaliating after a U-2 is lost"
+  "event:cuban_missile_crisis/model/config/script/6/fire/launch_nuclear":
+    value: 0.2
+    range: [0.05, 0.5]
+    source: "Fursenko and Naftali (1997); McNamara at Havana (Blight, Allyn and Welch 1993): about 98 tactical warheads (FKR cruise missiles, Luna rockets) in Cuba, with commanders' authority to use them debated in Moscow"
+    note: "chance a US strike on Cuba turns nuclear when Soviet tactical warheads are ready"
+  "event:cuban_missile_crisis/model/config/script/4/options/1/control":
+    value: 0.8
+    range: [0.5, 0.95]
+    source: "Fursenko and Naftali (1997): after the U-2 fell Khrushchev ordered that no fire be opened without Moscow's order"
+    note: "how much of its SAM commands' delegated authority Moscow can withdraw"
+
+  # ----------------------------------------------- the 1983 war scare (E48; light review)
+  "event:able_archer/model/config/script/0/roles/USA/p_high_resolve":
+    value: 0.02
+    range: [0.005, 0.1]
+    source: "PFIAB, The Soviet 'War Scare' (1990): no US plan or intent to strike first"
+    note: "nature's chance that Washington means to strike"
+  "event:able_archer/model/bindings/1/terms/tension":
+    value: 0.6
+    range: [0.3, 1.0]
+    source: "Andrew and Gordievsky, KGB (1990); Barrass (2016): Operation RYaN and Andropov's fear of a surprise attack"
+    note: "Moscow's prior that Washington means to strike rises with tension: 0.3 at the replay's world (tension 0.56)"
+  "event:able_archer/model/bindings/1/base": {value: -0.04, placeholder: true, source: "E48", note: "anchors the RYaN prior at 0.3 at the replay's world"}
+  "event:able_archer/model/bindings/2/terms/tension":
+    value: 240.0
+    range: [120.0, 480.0]
+    source: "E48: the RYaN prior (0.6 x tension) times 400, the loss of riding out a real first strike (the catastrophe plus the retaliatory force)"
+    note: "the Soviet leader's cost of waiting after a launch report: 120 at the replay's world; it launches on warning above 200 (tension over 0.9)"
+  "event:able_archer/model/bindings/2/base": {value: -16.0, placeholder: true, source: "E48", note: "with the slope, 120 at the replay's world"}
+  "event:able_archer/model/bindings/3/terms/tension": {value: 240.0, range: [120.0, 480.0], source: "as bindings/2", note: "the same cost after a NATO alert"}
+  "event:able_archer/model/bindings/3/base": {value: -16.0, placeholder: true, source: "E48", note: "as bindings/2"}
+  "event:able_archer/model/bindings/4/terms/tension":
+    value: 60.0
+    range: [30.0, 120.0]
+    source: "E48: the RYaN prior (0.6 x tension) times 100, the loss of being caught unready (Barrass 2016: the alert as protection against a surprise attack)"
+    note: "Moscow's cost of standing down: 30 at the replay's world"
+  "event:able_archer/model/bindings/4/base": {value: -4.0, placeholder: true, source: "E48", note: "with the slope, 30 at the replay's world"}
+  "event:able_archer/model/config/script/2/base":
+    value: 0.1
+    range: [0.03, 0.3]
+    source: "Hoffman, The Dead Hand (2009); Sagan (1993): the Oko false alarm of 26 September 1983, NORAD's of November 1979 and June 1980"
+    note: "chance of an early-warning false alarm during the crisis"
+  "event:able_archer/model/config/script/2/temperaments/by_the_book/weight":
+    value: 0.5
+    range: [0.2, 0.8]
+    source: "Hoffman (2009): Petrov said colleagues trained as soldiers would have reported an attack"
+    note: "chance the duty officer reports a false alarm as an attack"
+  "event:able_archer/model/config/script/2/temperaments/steady/weight": {value: 0.5, source: "as by_the_book", note: "1 - the by-the-book share"}
+  "event:able_archer/model/config/script/6/per_rung":
+    value: 0.15
+    range: [0.05, 0.3]
+    source: "PFIAB (1990): NATO intelligence saw the Soviet air alert during Able Archer"
+    note: "chance a Soviet alert is seen and put to NATO's intelligence chief, per rung"
+  "event:able_archer/model/config/script/6/temperaments/by_the_book/weight":
+    value: 0.3
+    range: [0.1, 0.6]
+    source: "PFIAB (1990): Perroots chose not to raise NATO's alert, 'instinct, not informed guidance'"
+    note: "chance NATO answers a Soviet alert with its own"
+  "event:able_archer/model/config/script/6/temperaments/steady/weight": {value: 0.7, source: "as by_the_book", note: "1 - the by-the-book share"}
+
+  # --------------------------------------------- the Vietnam War (E47; light review)
+  "event:vietnam_war/model/config/sponsors/DRV/values/partition":
+    value: -2.0
+    placeholder: true
+    source: "Nguyen, Hanoi's War (2012): unification was Le Duan's non-negotiable aim"
+    note: "a lasting division is costly to Hanoi (near-indivisible stake; Mack 1975)"
+  "event:vietnam_war/model/config/sponsors/DRV/settlement/base": {value: -6.0, placeholder: true, source: "E47", note: "Hanoi's settlement value is -6 + 9 x its share"}
+  "event:vietnam_war/model/config/sponsors/DRV/settlement/per_share": {value: 9.0, placeholder: true, source: "E47", note: "with the base, 3 for the whole South (its victory value)"}
+  "event:vietnam_war/model/config/types/b/levels/unyielding/weight": {value: 0.7, placeholder: true, source: "Nguyen 2012", note: "nature's chance that Hanoi is unyielding"}
+  "event:vietnam_war/model/config/types/a/levels/staying/weight": {value: 0.5, placeholder: true, source: "E47", note: "nature's chance that US resolve holds: agnostic; the weariness rule wears it down"}
+  "event:vietnam_war/model/bindings/1/terms/powers.USA.stability":
+    value: -1.0
+    placeholder: true
+    source: "Nguyen 2012: Hanoi expected a protracted war to outlast the US, as it had France"
+    note: "Hanoi's prior that the US tires falls with US stability (domestic support): 0.6 at the 1964 replay world"
+  "event:vietnam_war/model/bindings/3/terms/powers.USA.tech_space":
+    value: -0.1
+    placeholder: true
+    source: "The Pentagon Papers: graduated pressure (Rolling Thunder) was expected to bend Hanoi"
+    note: "Washington's prior that Hanoi can be bent falls with its intelligence capacity: 0.6 at the replay world"

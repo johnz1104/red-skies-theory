@@ -1,0 +1,224 @@
+era: 1
+title: Engine fixture
+events:
+  - id: fx_telegram
+    kind: cutscene
+    title: Telegram
+    window: {earliest: 1946-Q1, latest: 1946-Q4}
+    historical_date: 1946-Q1
+    narrative: Tension rises.
+    effects:
+      - tension: 0.1
+      - flag: cold_war_begins
+      - relations: {a: USA, b: USSR, add: -0.2}
+  - id: fx_cascade
+    kind: cutscene
+    title: Cascade
+    when: {flag: cold_war_begins}
+    narrative: A consequence in the same quarter.
+    effects: [{flag: cascade_done}]
+  - id: fx_variant_a
+    kind: cutscene
+    title: Variant A
+    window: {earliest: 1947-Q1}
+    when: {flag: cascade_done}
+    priority: 5
+    excludes: [fx_variant_b]
+    effects: [{flag: variant_a}]
+  - id: fx_variant_b
+    kind: cutscene
+    title: Variant B
+    window: {earliest: 1947-Q1}
+    when: {flag: cascade_done}
+    effects: [{flag: variant_b}]
+  - id: fx_hazard
+    kind: cutscene
+    title: Hazard
+    window: {earliest: 1950-Q1, latest: 1960-Q4}
+    hazard: 0.2
+    effects: [{flag: hazard_fired}]
+  - id: fx_eisenhower
+    kind: leadership
+    title: Eisenhower
+    window: {earliest: 1953-Q1}
+    historical_date: 1953-Q1
+    effects: [{leader: eisenhower}]
+
+  - id: fx_civil_war
+    kind: major
+    title: Civil war
+    window: {earliest: 1946-Q3, latest: 1946-Q3}
+    model:
+      family: attrition
+      cadence: annual
+      region: china_mainland
+      config:
+        sponsors:
+          PRC: {side: a, capacity: 1.0, direct: true, values: {a_victory: 3, b_victory: -3, partition: 0, a_withdrew: -3, b_withdrew: 3, stalemate: 0}}
+          USSR: {side: a, capacity: 0.3, values: {a_victory: 1, b_victory: -1, partition: 0, a_withdrew: -1, b_withdrew: 1, stalemate: 0}}
+          USA: {side: b, capacity: 0.6, values: {a_victory: -1, b_victory: 1, partition: 0, a_withdrew: 1, b_withdrew: -1, stalemate: 0}}
+        local_strength: {a: 1.0, b: 1.2}
+        max_rounds: 12
+      historical:
+        choices: {PRC: [high], USSR: [low], USA: [low, withdraw]}
+        chance: [a_gains]
+    outcomes:
+      a_victory: {effects: [{status: {power: PRC, to: active}}, {flag: prc_founded}], narrative: The CCP wins.}
+      b_withdrew: {effects: [{status: {power: PRC, to: active}}, {flag: prc_founded}]}
+      b_victory: {effects: [{status: {power: PRC, to: eliminated}}]}
+      a_withdrew: {effects: [{status: {power: PRC, to: eliminated}}]}
+      partition: {effects: [{status: {power: PRC, to: active}}, {flag: china_divided}]}
+      stalemate: {effects: [{status: {power: PRC, to: active}}, {flag: china_divided}]}
+
+  - id: fx_crisis
+    kind: major
+    title: Crisis
+    window: {earliest: 1947-Q1, latest: 1947-Q1}
+    model:
+      family: crisis
+      region: persian_gulf
+      config:
+        roles:
+          USSR: {side: a, values: {a_prevails: 1, b_prevails: -1, compromise: 0, limited_war: -4, nuclear_war: -30}, escalation_cost: 0.1}
+          USA: {side: b, values: {a_prevails: -1, b_prevails: 1, compromise: 0, limited_war: -4, nuclear_war: -30}, audience_cost: 0.5}
+        script:
+          - {stage: types, roles: {USSR: {p_high_resolve: 0.3}}}
+          - {stage: move, actor: USSR, options: [{id: withdraw_troops, kind: concede}, {id: stay, kind: escalate}]}
+          - {stage: signal, actor: USA, options: [{id: quiet, stance: soft}, {id: ultimatum, stance: hard}]}
+          - {stage: move, actor: USSR, options: [{id: withdraw_late, kind: concede}, {id: hold, kind: hold}]}
+          - {stage: accident, base: 0.02, per_rung: 0.02}
+        final_outcome: compromise
+      bindings:
+        - {at: roles.USA.values.b_prevails, terms: {powers.USA.credibility: 0.5}, clamp: [0.5, 2.0]}
+      historical:
+        choices: {USSR: [stay, withdraw_late], USA: [ultimatum]}
+        chance: [low, calm]
+        outcome: b_prevails
+    outcomes:
+      a_prevails: {effects: [{shift_influence: {region: persian_gulf, toward: USSR, amount: 0.2}}]}
+      b_prevails: {effects: [{add: {path: powers.USA.credibility, value: 0.05}}, {flag: crisis_won}]}
+      compromise: {effects: []}
+      limited_war: {effects: [{tension: 0.2}, {start_event: fx_war_after_crisis}]}
+      nuclear_war: {effects: [{end_campaign: nuclear_war}]}
+    tags:
+      "USA:signal=ultimatum": {effects: [{flag: ultimatum_issued}]}
+
+  - id: fx_war_after_crisis
+    kind: major
+    title: War after crisis
+    window: {earliest: 2000-Q1}
+    model:
+      family: attrition
+      cadence: quarterly
+      config:
+        sponsors:
+          USA: {side: a, values: {a_victory: 1, b_victory: -1, partition: 0, a_withdrew: -1, b_withdrew: 1, stalemate: 0}}
+          USSR: {side: b, values: {a_victory: -1, b_victory: 1, partition: 0, a_withdrew: 1, b_withdrew: -1, stalemate: 0}}
+        max_rounds: 4
+    outcomes:
+      a_victory: {}
+      b_victory: {}
+      partition: {}
+      a_withdrew: {}
+      b_withdrew: {}
+      stalemate: {}
+
+  - id: fx_alignment
+    kind: major
+    title: Aid offer
+    window: {earliest: 1947-Q2, latest: 1947-Q2}
+    model:
+      family: alignment
+      config:
+        patrons:
+          USA: {gain: {UK: 1.0, FRA: 1.0, EEUR: 1.0}}
+          USSR: {gain: {EEUR: 1.5}, loss: {UK: 0.2}}
+        clients:
+          UK: {mode: player, affinity: {USA: 0.8, USSR: -1.0}, nonaligned: 0.2}
+          FRA: {mode: player, affinity: {USA: 0.5, USSR: -0.2}, nonaligned: 0.4}
+          EEUR: {mode: chance, affinity: {USA: 0.0, USSR: 0.8}, nonaligned: 0.0}
+      historical:
+        choices: {USA: [aid_guarantee], USSR: [aid], UK: [aligned_USA], FRA: [aligned_USA]}
+        chance: [aligned_USSR]
+    outcomes:
+      aligned_USA: {effects: [{shift_influence: {region: western_europe, toward: USA, amount: 0.1}}]}
+      aligned_USSR: {}
+      nonaligned: {}
+    tags:
+      "EEUR:aligned_USSR": {effects: [{flag: eastern_bloc_consolidated}]}
+
+  - id: fx_talks
+    kind: major
+    title: Talks
+    window: {earliest: 1948-Q2, latest: 1948-Q2}
+    model:
+      family: bargaining
+      cadence: quarterly
+      region: germany
+      config:
+        roles: {A: USA, B: USSR}
+        horizon: 4
+        sides:
+          A: {discount: 0.95, delay_cost: 0.05, breakdown_value: -2, impasse_value: 0.0}
+          B: {discount: 0.95, delay_cost: 0.05, breakdown_value: -2, impasse_value: 0.1}
+        breakdown: {base: 0.02, growth: 0.02, max: 0.2}
+      historical:
+        choices: {USSR: [offer_025, accept], USA: [reject, offer_075]}
+        chance: [talks_continue]
+    outcomes:
+      agreement: {effects: [{shift_influence: {region: germany, toward: USA, amount: 0.2, scale_by: share}}]}
+      breakdown: {effects: [{tension: 0.2}]}
+      impasse: {}
+      vetoed: {}
+
+  - id: fx_uprising
+    kind: major
+    title: Uprising
+    window: {earliest: 1956-Q4, latest: 1956-Q4}
+    model:
+      family: intervention
+      region: eastern_europe
+      config:
+        roles: {patron: USSR, rival: USA}
+        values:
+          patron: {reformed: 0.2, crushed: 1, defected: -2, quagmire: -1, clash: -8}
+          rival: {reformed: 0.3, crushed: -0.5, defected: 1.5, quagmire: 0.5, clash: -8}
+        costs: {intervene: 0.5, covert_aid: 0.2, confront: 0.5}
+      historical:
+        choices: {USSR: [intervene], USA: [condemn]}
+        chance: [strong, alarming, crushed]
+    outcomes:
+      reformed: {}
+      crushed: {effects: [{flag: uprising_crushed}]}
+      defected: {}
+      quagmire: {}
+      clash: {effects: [{end_campaign: nuclear_war}]}
+
+  - id: fx_canal
+    kind: major
+    title: Canal crisis
+    window: {earliest: 1956-Q4, latest: 1956-Q4}
+    model:
+      family: crisis
+      tier: 2
+      config:
+        roles:
+          UK: {side: a, values: {a_prevails: 1.5, b_prevails: -1, compromise: 0, limited_war: -2, nuclear_war: -30}}
+          FRA: {side: a, values: {a_prevails: 1.5, b_prevails: -1, compromise: 0, limited_war: -2, nuclear_war: -30}}
+          EGY: {side: b, values: {a_prevails: -2, b_prevails: 1, compromise: 0, limited_war: -2, nuclear_war: -30}}
+          USA: {side: neutral, values: {a_prevails: -0.5, b_prevails: 0.3, compromise: 0.5, limited_war: -2, nuclear_war: -30}}
+        script:
+          - {stage: move, actor: UK, options: [{id: refrain, kind: concede}, {id: invade, kind: escalate}]}
+          - {stage: move, actor: FRA, options: [{id: stay_out, kind: hold}, {id: join, kind: escalate}]}
+          - {stage: move, actor: EGY, options: [{id: yield, kind: concede}, {id: resist, kind: hold}]}
+          - {stage: partner, actor: USA, options: [{id: back_allies, target: b}, {id: pressure, target: a, continue_cost: 1.5}]}
+          - {stage: move, actor: UK, options: [{id: withdraw, kind: concede}, {id: continue, kind: hold}]}
+        final_outcome: a_prevails
+      historical:
+        choices: {UK: [invade, withdraw], FRA: [join], EGY: [resist], USA: [pressure]}
+    outcomes:
+      a_prevails: {}
+      b_prevails: {effects: [{add: {path: powers.UK.prestige, value: -0.1}}]}
+      compromise: {}
+      limited_war: {}
+      nuclear_war: {effects: [{end_campaign: nuclear_war}]}

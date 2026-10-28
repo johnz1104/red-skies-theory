@@ -1,0 +1,987 @@
+# Era III, 1954-1962: crises at the periphery, Berlin and Cuba. Illustrative.
+era: 3
+title: The periphery, Berlin and Cuba (1954-1962)
+events:
+  # ----------------------------------------------------------- leadership
+  - id: khrushchev_consolidates
+    kind: leadership
+    title: Khrushchev consolidates power
+    window: {earliest: 1955-Q1, latest: 1956-Q4}
+    historical_date: 1955-Q1
+    priority: 20
+    when: {leader: {power: USSR, in: [malenkov]}}
+    narrative: "Malenkov is pushed aside; Nikita Khrushchev emerges as the dominant Soviet leader."
+    effects: [{leader: khrushchev}]
+
+  - id: eden_succeeds
+    kind: leadership
+    title: Eden succeeds Churchill
+    window: {earliest: 1955-Q2, latest: 1956-Q4}
+    historical_date: 1955-Q2
+    priority: 20
+    when: {leader: {power: UK, in: [churchill]}}
+    narrative: "Anthony Eden becomes Prime Minister."
+    effects: [{leader: eden}]
+
+  - id: macmillan_succeeds
+    kind: leadership
+    title: Macmillan replaces Eden
+    window: {earliest: 1957-Q1, latest: 1960-Q4}
+    historical_date: 1957-Q1
+    priority: 20
+    when:
+      all:
+        - leader: {power: UK, in: [eden]}
+        - any: [{flag: suez_humiliation}, {after: 1959-Q4}]
+    narrative: "Eden resigns; Harold Macmillan sets out to repair the special relationship."
+    effects: [{leader: macmillan}, {relations: {a: UK, b: USA, add: 0.1}}]
+
+  - id: de_gaulle_returns
+    kind: leadership
+    title: De Gaulle returns to power
+    window: {earliest: 1957-Q1, latest: 1962-Q4}
+    historical_date: 1958-Q2
+    priority: 20
+    when:
+      all:
+        - leader: {power: FRA, in: [fourth_republic]}
+        - active: algerian_war
+        - active_for: {event: algerian_war, quarters: 14}
+    narrative: "The Fourth Republic collapses over Algeria; de Gaulle founds the Fifth Republic."
+    effects: [{leader: de_gaulle}, {add: {path: powers.FRA.stability, value: 0.15}}, {flag: fifth_republic}]
+
+  - id: kennedy_inaugurated
+    kind: leadership
+    title: Kennedy inaugurated
+    window: {earliest: 1961-Q1, latest: 1961-Q4}
+    historical_date: 1961-Q1
+    priority: 20
+    when: {leader: {power: USA, in: [eisenhower]}}
+    narrative: "John F. Kennedy becomes President."
+    effects: [{leader: kennedy}]
+
+  # ------------------------------------------------------- Korea after the war
+  # (user decisions 2026-10-12; EXPERIMENTS.md E31)
+  - id: us_korea_troops
+    kind: decision
+    title: American troops in Korea after the armistice
+    window: {earliest: 1950-Q3, latest: 1991-Q4}
+    once: false  # yearly, so no historical date (the replay checks an event's last firing)
+    when:
+      all:
+        - flag: us_troops_korea
+        - any: [{flag: korean_armistice}, {flag: korean_frozen_conflict}]
+        - no_flag: korea_peace_treaty
+        - quarter_of_year: 1
+    # The Mutual Defense Treaty (signed October 1953) kept US forces in the South as a
+    # tripwire. Nixon withdrew the 7th Division (about 20,000 men) in 1971; Carter planned to
+    # withdraw the ground forces in 1977 and dropped the plan in 1979. Leaving frees forces, as
+    # in 1949, but breaks faith with a treaty ally (credibility, placeholder) and reopens the
+    # risk of a renewed war when the US is distracted elsewhere.
+    decision: {power: USA, tier: 2, historical: [keep_garrison]}
+    outcomes:
+      keep_garrison:
+        narrative: "American troops stay in South Korea under the defence treaty."
+      withdraw:
+        narrative: "The United States withdraws its troops from South Korea."
+        effects: [{unflag: us_troops_korea}, {flag: us_left_korea}, {add: {path: powers.USA.conventional, value: 0.1}}, {add: {path: powers.USA.credibility, value: -0.05}}]
+
+  # The armistice (Article IV) called for a political conference within three months. It met
+  # at Geneva from 26 April to 15 June 1954 and failed. The issue was indivisible: Washington
+  # and Seoul wanted UN-supervised elections across Korea, where the South held about two
+  # thirds of the people; the Communists wanted foreign troops out first and neutral
+  # supervision. An agreement here is all-Korea elections: the share is the agreed chance
+  # that Seoul wins them (the supervision terms), and the result is a lottery between
+  # unification under Seoul and under Kim, with foreign troops leaving. With a Communist China
+  # in the war, Beijing loses its buffer if Seoul wins, so no terms suit both sides and the
+  # armistice stays without a treaty, the canonical outcome. Without one, Moscow negotiates
+  # (geneva_korea_soviet) and might accept even odds, as it accepted Austria's neutrality.
+  # In both, the two Korean governments must ratify, and neither accepts an election it might
+  # lose (E39), so election unification is effectively closed in this window.
+  # Losing Korea at the polls costs Washington credibility, less than a lost war (-0.1
+  # against -0.15; placeholder): the US backed the cancellation of Vietnam's 1956 elections
+  # because Ho Chi Minh would have won them. Winning gains as much.
+  - id: geneva_korea
+    kind: major
+    title: The Geneva Conference on Korea
+    window: {earliest: 1950-Q3, latest: 1958-Q4}
+    historical_date: 1954-Q2
+    excludes: [geneva_korea_soviet]
+    when:
+      all:
+        - flag: korean_armistice
+        - no_flag: korea_peace_treaty
+        - quarter_of_year: 2
+        - status: {power: PRC, in: [active]}
+        - regime: {power: PRC, in: [ccp]}
+    model:
+      family: bargaining
+      tier: 2
+      payoffs: derived
+      cadence: quarterly
+      region: korea
+      config:
+        roles: {A: USA, B: PRC}
+        grid: [0.4, 0.5, 0.6, 0.67]  # the chance that Seoul wins all-Korea elections
+        horizon: 1  # one session: the Korean phase ran 26 April to 15 June 1954 (E33)
+        first_proposer: A
+        # outcome values are hand-set fallbacks; derived payoffs replace them
+        sides:
+          A: {discount: 0.95, breakdown_value: 0.0, impasse_value: 0.0}
+          B: {discount: 0.95, breakdown_value: 0.0, impasse_value: 0.0}
+        breakdown: {base: 0.05, growth: 0.0, max: 0.05}
+        consent:
+          - {role: USSR}
+          - {role: UK}
+          # the two Korean governments ratify too (user decision 2026-10-13, E39): each
+          # faced its end if it lost, and would accept only elections it was sure to win.
+          # Rhee refused to sign the armistice and freed about 27,000 prisoners to wreck it
+          # (18 June 1953); Seoul's 14 points (22 May 1954) asked UN-supervised elections by
+          # population; Nam Il's plan (27 April 1954) gave the North an equal-seat commission.
+          # Hand values mirror Kim's in the war (unification +3, the regime's end -5), over
+          # the chance that Seoul wins: Seoul ratifies at 0.625 or more, Pyongyang at 0.375
+          # or less, so no terms pass both and the armistice stays
+          - &rok_consent {role: ROK, base: -5.0, per_share: 8.0, veto_value: 0.0}
+          - &dprk_consent {role: DPRK, base: 3.0, per_share: -8.0, veto_value: 0.0}
+      historical:
+        # the US proposed UN-supervised elections by population; Zhou Enlai and Molotov
+        # proposed an all-Korean commission and neutral supervision; no agreement. One round:
+        # the US offers its terms and the Communist side rejects them
+        choices: {USA: [offer_067], PRC: [reject]}
+        outcome: impasse
+    outcomes:
+      agreement: &korea_elections {narrative: "Korea is unified by elections under international supervision; foreign troops leave.", effects: [{flag: korea_peace_treaty}, {unflag: [korea_divided, korean_armistice, korean_frozen_conflict, us_troops_korea]}, {tension: -0.1}, {lottery: {chance: {metric: share}, win: [{set_controller: {region: korea, to: USA}}, {flag: korea_unified_west}, {add: {path: powers.USA.credibility, value: 0.1}}], lose: [{set_controller: {region: korea, to: USSR}}, {flag: korea_unified_communist}, {add: {path: powers.USA.credibility, value: -0.1}}]}}]}
+      breakdown: &korea_breakdown {narrative: "The conference on Korea breaks up in recriminations.", effects: [{tension: 0.05}]}
+      impasse: &korea_impasse {narrative: "The conference on Korea ends without agreement; the armistice remains, with no peace treaty."}
+      vetoed: &korea_vetoed {narrative: "A patron or one of the Korean governments refuses the terms; the armistice remains, with no peace treaty."}
+
+  - id: geneva_korea_soviet
+    kind: major
+    title: The Geneva Conference on Korea (without Communist China)
+    window: {earliest: 1950-Q3, latest: 1958-Q4}
+    excludes: [geneva_korea]
+    when:
+      all:
+        - flag: korean_armistice
+        - no_flag: korea_peace_treaty
+        - quarter_of_year: 2
+        - not: {all: [{status: {power: PRC, in: [active]}}, {regime: {power: PRC, in: [ccp]}}]}
+    model:
+      family: bargaining
+      tier: 2
+      payoffs: derived
+      cadence: quarterly
+      region: korea
+      config:
+        roles: {A: USA, B: USSR}
+        grid: [0.4, 0.5, 0.6, 0.67]
+        horizon: 1  # one session: the Korean phase ran 26 April to 15 June 1954 (E33)
+        first_proposer: A
+        sides:
+          A: {discount: 0.95, breakdown_value: 0.0, impasse_value: 0.0}
+          B: {discount: 0.95, breakdown_value: 0.0, impasse_value: 0.0}
+        breakdown: {base: 0.05, growth: 0.0, max: 0.05}
+        consent:
+          - {role: UK}
+          - *rok_consent
+          - *dprk_consent
+      historical:
+        # a counterfactual (China was Communist): the plan is for on-rails play, with no outcome
+        choices: {USA: [offer_067], USSR: [reject]}
+    outcomes:
+      agreement: *korea_elections
+      breakdown: *korea_breakdown
+      impasse: *korea_impasse
+      vetoed: *korea_vetoed
+
+  # ------------------------------------------------------------ cutscenes
+  - id: dien_bien_phu
+    kind: cutscene
+    title: Dien Bien Phu
+    window: {earliest: 1953-Q1, latest: 1956-Q4}
+    historical_date: 1954-Q2
+    when: {outcome: {event: indochina_war, in: [partition, stalemate, b_victory, a_withdrew]}}
+    narrative: "The fall of Dien Bien Phu breaks French will to hold Indochina."
+    effects: [{add: {path: powers.FRA.prestige, value: -0.1}}, {flag: french_defeat_indochina}]
+
+  - id: seato_baghdad_pact
+    kind: cutscene
+    title: SEATO and the Baghdad Pact
+    window: {earliest: 1954-Q3, latest: 1956-Q4}
+    historical_date: 1954-Q3
+    when: {flag: nato}
+    narrative: "Washington extends its alliance system to Southeast Asia and the Middle East."
+    effects: [{flag: seato}, {shift_influence: {region: southeast_asia, toward: USA, amount: 0.05}}, {shift_influence: {region: persian_gulf, toward: USA, amount: 0.05}}]
+
+  - id: frg_joins_nato
+    kind: cutscene
+    title: West Germany joins NATO
+    window: {earliest: 1955-Q2, latest: 1957-Q4}
+    historical_date: 1955-Q2
+    when: {flag: [nato, germany_divided]}
+    narrative: "The Federal Republic is rearmed and admitted to NATO."
+    effects: [{flag: frg_in_nato}, {shift_influence: {region: germany, toward: USA, amount: 0.1}}, {tension: 0.05}]
+
+  - id: warsaw_pact
+    kind: cutscene
+    title: The Warsaw Pact
+    window: {earliest: 1955-Q1, latest: 1957-Q4}
+    historical_date: 1955-Q2
+    when: {fired: frg_joins_nato}
+    narrative: "Moscow answers with the Warsaw Treaty Organization."
+    effects: [{flag: warsaw_pact}, {shift_influence: {region: eastern_europe, toward: USSR, amount: 0.05}}]
+
+  - id: austrian_state_treaty
+    kind: cutscene
+    title: The Austrian State Treaty
+    window: {earliest: 1955-Q2, latest: 1956-Q4}
+    historical_date: 1955-Q2
+    when:
+      all:
+        - compare: {path: tension, op: lt, value: 0.6}
+        - leader: {power: USSR, in: [malenkov, khrushchev]}
+    narrative: "The occupying powers withdraw from a neutral Austria."
+    effects: [{flag: austria_neutral}, {tension: -0.05}]
+
+  - id: bandung_conference
+    kind: cutscene
+    title: The Bandung Conference
+    window: {earliest: 1955-Q2, latest: 1955-Q4}
+    historical_date: 1955-Q2
+    narrative: "Asian and African states meet at Bandung; the non-aligned movement takes shape."
+    effects: [{flag: non_aligned_movement}, {shift_influence: {region: south_asia, toward: USA, amount: -0.05}}, {shift_influence: {region: southeast_asia, toward: USA, amount: -0.03}}]
+
+  - id: khrushchev_secret_speech
+    kind: cutscene
+    title: The Secret Speech
+    window: {earliest: 1956-Q1, latest: 1957-Q4}
+    historical_date: 1956-Q1
+    when: {leader: {power: USSR, in: [khrushchev]}}
+    narrative: "Khrushchev denounces Stalin's crimes to the Twentieth Party Congress."
+    effects: [{flag: destalinization}, {add: {path: regions.eastern_europe.stability, value: -0.2}}, {relations: {a: PRC, b: USSR, add: -0.25}}]
+
+  - id: polish_october
+    kind: cutscene
+    title: The Polish October
+    window: {earliest: 1956-Q4, latest: 1957-Q2}
+    historical_date: 1956-Q4
+    priority: 5
+    when:
+      all:
+        - flag: destalinization
+        - compare: {path: regions.eastern_europe.stability, op: lt, value: 0.55}
+    narrative: "Gomulka returns to power in Warsaw; Moscow accepts a national road to socialism."
+    effects: [{flag: polish_october}, {add: {path: regions.eastern_europe.stability, value: 0.03}}]
+
+  - id: suez_nationalization
+    kind: cutscene
+    title: Nasser nationalizes the Suez Canal
+    window: {earliest: 1956-Q3, latest: 1957-Q4}
+    historical_date: 1956-Q3
+    when: {compare: {path: regions.middle_east.influence.UK, op: lt, value: 0.45}}
+    narrative: "Nasser nationalizes the Suez Canal Company after the West withdraws Aswan Dam funding."
+    effects: [{flag: suez_canal_nationalized}, {add: {path: powers.UK.prestige, value: -0.05}}, {add: {path: regions.middle_east.stability, value: -0.1}}]
+
+  - id: treaty_of_rome
+    kind: cutscene
+    title: The Treaty of Rome
+    window: {earliest: 1957-Q1, latest: 1958-Q4}
+    historical_date: 1957-Q1
+    when: {compare: {path: regions.western_europe.stability, op: ge, value: 0.5}}
+    narrative: "Six nations found the European Economic Community."
+    effects: [{flag: eec}, {add: {path: powers.FRA.growth, value: 0.005}}, {add: {path: regions.western_europe.stability, value: 0.05}}]
+
+  - id: sputnik
+    kind: cutscene
+    title: Sputnik
+    race: {winner: USSR, loser: USA}
+    window: {earliest: 1950-Q1}
+    historical_date: 1957-Q4
+    excludes: [us_first_satellite]
+    when: {compare: {path: powers.USSR.tech_space, op: ge, value: 1.0}}
+    narrative: "The Soviet Union launches the first artificial satellite; Americans fear a missile gap."
+    effects: [{flag: [sputnik, space_race]}, {add: {path: powers.USSR.prestige, value: 0.15}}, {add: {path: powers.USA.prestige, value: -0.05}}, {add: {path: powers.USA.tech_space, value: 0.3}}]
+
+  - id: us_first_satellite
+    kind: cutscene
+    title: America first in orbit
+    race: {winner: USA, loser: USSR}
+    window: {earliest: 1950-Q1}
+    when: {compare: {path: powers.USA.tech_space, op: ge, value: 1.0}}
+    narrative: "An American satellite reaches orbit first."
+    effects: [{flag: [us_first_in_space, space_race]}, {add: {path: powers.USA.prestige, value: 0.1}}, {add: {path: powers.USSR.tech_space, value: 0.2}}]
+
+  - id: great_leap_forward
+    kind: cutscene
+    title: The Great Leap Forward
+    window: {earliest: 1958-Q2, latest: 1960-Q4}
+    historical_date: 1958-Q2
+    when:
+      all:
+        - leader: {power: PRC, in: [mao]}
+        - status: {power: PRC, in: [active]}
+    narrative: "Mao launches the Great Leap Forward; famine follows."
+    effects: [{flag: great_leap}, {add: {path: powers.PRC.economy, value: -0.02}}, {add: {path: powers.PRC.stability, value: -0.15}}, {relations: {a: PRC, b: USSR, add: -0.15}}]
+
+  - id: cuban_revolution
+    kind: cutscene
+    title: The Cuban Revolution
+    window: {earliest: 1959-Q1, latest: 1961-Q4}
+    historical_date: 1959-Q1
+    when: {compare: {path: regions.caribbean.stability, op: lt, value: 0.75}}
+    narrative: "Fidel Castro's guerrillas take Havana."
+    effects: [{flag: castro_in_power}, {shift_influence: {region: caribbean, toward: USA, amount: -0.3}}, {add: {path: regions.caribbean.stability, value: -0.1}}]
+
+  - id: cuba_aligns_soviet
+    kind: cutscene
+    title: Cuba turns to Moscow
+    window: {earliest: 1960-Q1, latest: 1962-Q2}
+    historical_date: 1960-Q2
+    when:
+      all:
+        - flag: castro_in_power
+        - any:
+            - focus: {power: USA, region: caribbean, mode: covert, within_years: 1}
+            - compare: {path: powers.USA.relations.USSR, op: lt, value: -0.3}
+    narrative: "After American hostility, Castro aligns Cuba with the Soviet Union."
+    effects: [{flag: cuba_aligned_soviet}, {shift_influence: {region: caribbean, toward: USSR, amount: 0.4}}]
+
+  - id: france_atomic_bomb
+    kind: cutscene
+    title: The French atomic bomb
+    window: {earliest: 1952-Q1}
+    historical_date: 1960-Q1
+    when: {compare: {path: powers.FRA.tech_nuclear, op: ge, value: 1.0}}
+    narrative: "France explodes its first atomic bomb in the Sahara."
+    effects: [{flag: french_bomb}, {add: {path: powers.FRA.nuclear, value: 0.2}}, {add: {path: powers.FRA.prestige, value: 0.1}}]
+
+  - id: u2_incident
+    kind: cutscene
+    title: The U-2 incident
+    window: {earliest: 1960-Q1, latest: 1962-Q4}
+    historical_date: 1960-Q2
+    hazard: 0.5
+    when:
+      all:
+        - focus: {power: USA, mode: covert, within_years: 1}
+        - compare: {path: powers.USSR.tech_missile, op: ge, value: 2.5}
+    narrative: "A U-2 spy plane is shot down over the Soviet Union; the Paris summit collapses."
+    effects: [{flag: u2_shot_down}, {tension: 0.1}, {relations: {a: USA, b: USSR, add: -0.15}}, {add: {path: powers.USA.prestige, value: -0.05}}]
+
+  - id: sino_soviet_split
+    kind: cutscene
+    title: The Sino-Soviet split
+    window: {earliest: 1960-Q2}
+    historical_date: 1960-Q3
+    when:
+      all:
+        - status: {power: PRC, in: [active]}
+        - compare: {path: powers.PRC.relations.USSR, op: lt, value: 0.4}
+        - regime: {power: PRC, in: [ccp]}
+    narrative: "Moscow withdraws its advisers from China; the communist world splits."
+    effects: [{flag: sino_soviet_split}, {unflag: sino_soviet_alliance}, {relations: {a: PRC, b: USSR, add: -0.3}}, {add: {path: powers.PRC.tech_nuclear, value: -0.05}}, {add: {path: powers.USSR.prestige, value: -0.05}}]
+
+  - id: congo_independence
+    kind: cutscene
+    title: Congolese independence
+    window: {earliest: 1960-Q2, latest: 1960-Q4}
+    historical_date: 1960-Q2
+    narrative: "The Belgian Congo becomes independent and descends into secession and mutiny."
+    effects: [{flag: congo_independent}, {add: {path: regions.central_africa.stability, value: -0.2}}]
+
+  - id: gagarin
+    kind: cutscene
+    title: Gagarin
+    race: {winner: USSR, loser: USA}
+    window: {earliest: 1955-Q1}
+    historical_date: 1961-Q2
+    excludes: [us_first_human_in_space]
+    when: {compare: {path: powers.USSR.tech_space, op: ge, value: 1.6}}
+    narrative: "Yuri Gagarin becomes the first human in space."
+    effects: [{flag: gagarin}, {add: {path: powers.USSR.prestige, value: 0.1}}, {add: {path: powers.USA.tech_space, value: 0.2}}]
+
+  - id: apollo_program
+    kind: cutscene
+    title: The Apollo program
+    window: {earliest: 1961-Q2, latest: 1966-Q4}
+    historical_date: 1961-Q2
+    when:
+      all:
+        - any: [{fired: gagarin}, {fired: sputnik}]
+        - any: [{leader: {power: USA, in: [kennedy, johnson]}}, {after: 1963-Q1}]
+    narrative: "Kennedy commits the nation to landing a man on the Moon before the decade is out."
+    effects: [{flag: apollo_program}, {add: {path: powers.USA.tech_space, value: 0.6}}, {add: {path: powers.USA.burden, value: 0.01}}]
+
+  - id: us_first_human_in_space
+    kind: cutscene
+    title: An American first in space
+    race: {winner: USA, loser: USSR}
+    window: {earliest: 1955-Q1}
+    when: {compare: {path: powers.USA.tech_space, op: ge, value: 1.6}}
+    narrative: "An American astronaut is the first human in orbit."
+    effects: [{flag: us_first_human}, {add: {path: powers.USA.prestige, value: 0.1}}]
+
+  - id: berlin_wall
+    kind: cutscene
+    title: The Berlin Wall
+    window: {earliest: 1961-Q2, latest: 1963-Q4}
+    historical_date: 1961-Q3
+    hazard: 0.6
+    when: {outcome: {event: berlin_ultimatum, in: [impasse, vetoed, breakdown]}}
+    narrative: "East Germany seals the border in Berlin with a wall."
+    effects: [{flag: berlin_wall}, {add: {path: regions.eastern_europe.stability, value: 0.1}}, {add: {path: powers.USSR.prestige, value: -0.05}}, {tension: 0.05}]
+
+  - id: sino_indian_war
+    kind: cutscene
+    title: The Sino-Indian War
+    window: {earliest: 1962-Q4, latest: 1963-Q2}
+    historical_date: 1962-Q4
+    when: {status: {power: PRC, in: [active]}}
+    narrative: "China defeats India in a short border war."
+    effects: [{flag: sino_indian_war}, {add: {path: powers.PRC.prestige, value: 0.05}}, {add: {path: regions.south_asia.stability, value: -0.1}}]
+
+  # -------------------------------------------------------- major events
+  - id: geneva_conference
+    kind: major
+    title: The Geneva Conference on Indochina
+    window: {earliest: 1953-Q2, latest: 1956-Q4}
+    historical_date: 1954-Q2
+    when: {all: [{flag: indochina_partitioned}, {regime: {power: PRC, in: [ccp]}}]}
+    model:
+      family: bargaining
+      tier: 2
+      cadence: quarterly
+      region: indochina
+      config:
+        roles: {A: FRA, B: PRC}
+        grid: [0.3, 0.4, 0.5, 0.6, 0.7]
+        horizon: 3
+        first_proposer: B
+        surplus: 2.0
+        sides:
+          A: {discount: 0.9, delay_cost: 0.1, breakdown_value: -2.0, impasse_value: -1.0}
+          B: {discount: 0.95, delay_cost: 0.05, breakdown_value: -1.0, impasse_value: -0.5}
+        breakdown: {base: 0.05, growth: 0.05, max: 0.2}
+        consent:
+          - {role: USA, base: -0.3, per_share: 0.8, veto_value: 0.0}
+          - {role: USSR, base: 0.4, per_share: -0.2, veto_value: 0.0}
+          - {role: UK, base: 0.2, per_share: 0.0, veto_value: 0.0}
+      historical:
+        choices: {PRC: [offer_040, accept], FRA: [reject, offer_050], USA: [ratify], USSR: [ratify], UK: [ratify]}
+        chance: [talks_continue]
+        outcome: agreement
+    outcomes:
+      agreement: {narrative: "Vietnam is partitioned at the 17th parallel; France withdraws from Indochina.", effects: [{flag: [vietnam_partitioned, french_exit_indochina]}, {shift_influence: {region: indochina, toward: FRA, amount: -0.4}}, {shift_influence: {region: indochina, toward: USA, amount: 0.25, scale_by: share}}, {shift_influence: {region: indochina, toward: PRC, amount: 0.25, scale_by: {metric: share, invert: true}}}]}
+      breakdown: {narrative: "The conference collapses and the fighting resumes.", effects: [{flag: indochina_war_resumes}, {add: {path: regions.indochina.stability, value: -0.2}}]}
+      impasse: {narrative: "No settlement is reached; Indochina remains contested.", effects: [{flag: [vietnam_partitioned, indochina_unsettled]}]}
+      vetoed: {narrative: "Washington refuses to endorse the accords.", effects: [{flag: [vietnam_partitioned, indochina_unsettled]}, {relations: {a: USA, b: FRA, add: -0.1}}]}
+
+  - id: taiwan_strait_1954
+    kind: major
+    title: The First Taiwan Strait Crisis
+    window: {earliest: 1954-Q3, latest: 1955-Q4}
+    historical_date: 1954-Q3
+    when:
+      all:
+        - status: {power: PRC, in: [active]}
+        - flag: roc_on_taiwan
+        - regime: {power: PRC, in: [ccp]}
+    model:
+      family: crisis
+      tier: 2
+      region: taiwan
+      config:
+        roles:
+          PRC: {side: a, values: {a_prevails: 1.0, b_prevails: -0.5, compromise: 0.2, limited_war: -4.0, nuclear_war: -40}, escalation_cost: 0.1, high_resolve_war_factor: 0.7}
+          USA: {side: b, values: {a_prevails: -1.0, b_prevails: 1.0, compromise: 0.3, limited_war: -2.0, nuclear_war: -40}, escalation_cost: 0.1, audience_cost: 1.0, high_resolve_war_factor: 0.5}
+        script:
+          - {stage: types, roles: {USA: {p_high_resolve: 0.6}}}
+          - {stage: signal, actor: USA, options: [{id: strategic_ambiguity, stance: soft}, {id: formosa_resolution, stance: hard, cost: 0.05}]}
+          - {stage: move, actor: PRC, options: [{id: stand_down, kind: concede}, {id: shell_islands, kind: escalate, rungs: 1}, {id: invade_islands, kind: escalate, rungs: 2}]}
+          - {stage: move, actor: USA, options: [{id: abandon_islands, kind: concede}, {id: nuclear_threat, kind: escalate}, {id: defend_islands, kind: fight}]}
+          - {stage: move, actor: PRC, options: [{id: cease_shelling, kind: concede}, {id: persist, kind: hold}]}
+          - {stage: accident, per_rung: 0.02, nuclear_per_rung: 0.1}
+      bindings:
+        - {at: script.0.roles.USA.p_high_resolve, base: 0.2, terms: {powers.USA.credibility: 0.6}, clamp: [0.05, 0.95]}
+      historical:
+        choices: {USA: [formosa_resolution, nuclear_threat], PRC: [shell_islands, cease_shelling]}
+        chance: [high, calm]
+        outcome: b_prevails
+    outcomes:
+      a_prevails: {narrative: "The offshore islands fall to the People's Liberation Army.", effects: [{shift_influence: {region: taiwan, toward: PRC, amount: 0.1}}, {add: {path: powers.USA.credibility, value: -0.1}}, {add: {path: powers.PRC.prestige, value: 0.1}}]}
+      b_prevails: {narrative: "Facing American nuclear threats, Beijing stops shelling the islands.", effects: [{add: {path: powers.USA.credibility, value: 0.05}}, {add: {path: powers.PRC.prestige, value: -0.05}}, {relations: {a: USA, b: PRC, add: -0.1}}]}
+      compromise: {narrative: "The shelling subsides into an uneasy standoff.", effects: []}
+      limited_war: {narrative: "American and Chinese forces clash in the Taiwan Strait.", effects: [{tension: 0.2}, {flag: taiwan_war}, {relations: {a: USA, b: PRC, add: -0.4}}]}
+      nuclear_war: {effects: [{end_campaign: nuclear_war}]}
+    tags:
+      "USA:signal=formosa_resolution": {effects: [{flag: formosa_resolution}]}
+
+  - id: algerian_war
+    kind: major
+    title: The Algerian War
+    window: {earliest: 1954-Q4, latest: 1957-Q4}
+    historical_date: 1954-Q4
+    when: {flag: french_algeria}
+    model:
+      family: attrition
+      tier: 2
+      cadence: annual
+      region: north_africa
+      config:
+        sponsors:
+          FRA: {side: a, capacity: 1.2, direct: true, values: {a_victory: 2.0, b_victory: -2.0, partition: -0.3, a_withdrew: -0.5, b_withdrew: 2.0, stalemate: -1.0}}
+          USSR: {side: b, capacity: 0.3, values: {a_victory: -0.5, b_victory: 1.0, partition: 0.3, a_withdrew: 1.0, b_withdrew: -0.5, stalemate: 0.2}}
+        leads: {a: FRA, b: USSR}
+        local_strength: {a: 0.8, b: 0.9}
+        initial_control: 0.6
+        step: 0.04
+        victory_threshold: 0.84
+        max_rounds: 40
+        weariness: {high: 0.01, direct: 0.02}
+      historical:
+        choices: {FRA: [high, direct*7, withdraw], USSR: [low*9]}
+        chance: [a_gains/b_gains*16]
+        outcome: a_withdrew
+    outcomes:
+      a_withdrew: {narrative: "The Evian Accords end the war; Algeria becomes independent.", effects: [{flag: algeria_independent}, {unflag: french_algeria}, {shift_influence: {region: north_africa, toward: FRA, amount: -0.4}}, {add: {path: powers.FRA.prestige, value: -0.05}}, {add: {path: powers.FRA.stability, value: 0.1}}]}
+      a_victory: {narrative: "France crushes the FLN and keeps Algeria French.", effects: [{shift_influence: {region: north_africa, toward: FRA, amount: 0.2}}, {add: {path: powers.FRA.stability, value: -0.05}}]}
+      b_withdrew: {narrative: "Isolated, the FLN insurgency withers.", effects: [{shift_influence: {region: north_africa, toward: FRA, amount: 0.15}}]}
+      b_victory: {narrative: "The FLN drives France out of Algeria.", effects: [{flag: algeria_independent}, {unflag: french_algeria}, {shift_influence: {region: north_africa, toward: FRA, amount: -0.45}}, {shift_influence: {region: north_africa, toward: USSR, amount: 0.15}}, {add: {path: powers.FRA.prestige, value: -0.15}}, {add: {path: powers.FRA.stability, value: -0.15}}]}
+      partition: {narrative: "Algeria is partitioned between settlers and nationalists.", effects: [{flag: algeria_partitioned}]}
+      stalemate: {narrative: "The Algerian war drags on without end.", effects: [{flag: algerian_war_unresolved}, {add: {path: powers.FRA.stability, value: -0.1}}]}
+
+  - id: hungarian_revolution
+    kind: major
+    title: The Hungarian Revolution
+    window: {earliest: 1956-Q4, latest: 1957-Q2}
+    historical_date: 1956-Q4
+    when:
+      all:
+        - flag: destalinization
+        - compare: {path: regions.eastern_europe.stability, op: lt, value: 0.55}
+    model:
+      family: intervention
+      tier: 2
+      region: eastern_europe
+      config:
+        roles: {patron: USSR, rival: USA}
+        p_strong: 0.5
+        report_accuracy: 0.7
+        values:
+          patron: {reformed: 0.0, crushed: 0.8, defected: -2.5, quagmire: -1.0, clash: -30}
+          rival: {reformed: 0.5, crushed: -0.3, defected: 2.0, quagmire: 0.6, clash: -30}
+        costs: {crackdown: 0.1, intervene: 0.4, back_down: 1.0, condemn: 0.05, covert_aid: 0.3, confront: 1.0}
+        clash_risk: 0.15
+      bindings:
+        - {at: p_strong, base: 0.8, terms: {regions.eastern_europe.stability: -0.8}, clamp: [0.1, 0.9]}
+        - {at: costs.intervene, base: 0.1, terms: {powers.USSR.reformism: 0.6}, clamp: [0.05, 3.0]}
+      historical:
+        choices: {USSR: [intervene], USA: [condemn]}
+        chance: [strong, alarming, crushed]
+        outcome: crushed
+    outcomes:
+      reformed: {narrative: "Moscow tolerates a reformist Hungary inside the bloc.", effects: [{flag: hungary_reformed}, {add: {path: powers.USSR.prestige, value: -0.05}}]}
+      crushed: {narrative: "Soviet tanks crush the revolution in Budapest.", effects: [{flag: hungary_crushed}, {add: {path: regions.eastern_europe.stability, value: 0.15}}, {add: {path: powers.USSR.prestige, value: -0.1}}, {add: {path: powers.USA.credibility, value: -0.05}}]}
+      defected: {narrative: "Hungary leaves the Warsaw Pact.", effects: [{flag: hungary_defected}, {shift_influence: {region: eastern_europe, toward: USA, amount: 0.15}}, {add: {path: powers.USSR.prestige, value: -0.2}}]}
+      quagmire: {narrative: "Soviet forces are bogged down in a Hungarian insurgency.", effects: [{flag: hungarian_insurgency}, {add: {path: powers.USSR.stability, value: -0.05}}]}
+      clash: {narrative: "American and Soviet forces clash in Central Europe; the war goes nuclear.", effects: [{end_campaign: nuclear_war}]}
+
+  - id: suez_crisis
+    kind: major
+    title: The Suez Crisis
+    window: {earliest: 1956-Q4, latest: 1957-Q4}
+    historical_date: 1956-Q4
+    when: {flag: suez_canal_nationalized}
+    # Review of 2026-10-14 (EXPERIMENTS.md E41; Kyle, Suez, 1991; Kunz, The Economic Diplomacy
+    # of the Suez Crisis, 1991; Nichols, Eisenhower 1956, 2011). Britain and France invaded with
+    # Israel's pretext (Sevres); Eisenhower, not consulted, forced their withdrawal by money (a
+    # run on sterling, the IMF drawing and emergency oil withheld). Bulganin's rocket threat of
+    # 5 November was a bluff.
+    model:
+      family: crisis
+      tier: 1
+      payoffs: derived
+      region: middle_east
+      config:
+        roles:
+          UK: {side: a, values: {a_prevails: 1.5, b_prevails: -1.0, compromise: 0.2, limited_war: -2.0, nuclear_war: -40}, escalation_cost: 0.1}
+          FRA: {side: a, values: {a_prevails: 1.5, b_prevails: -0.8, compromise: 0.2, limited_war: -2.0, nuclear_war: -40}, escalation_cost: 0.1}
+          EGY: {side: b, values: {a_prevails: -2.0, b_prevails: 1.5, compromise: 0.0, limited_war: -2.0, nuclear_war: -40}}
+          USSR: {side: b, values: {a_prevails: -0.8, b_prevails: 0.8, compromise: 0.0, limited_war: -3.0, nuclear_war: -40}, escalation_cost: 0.2}
+          USA: {side: neutral, values: {a_prevails: -0.5, b_prevails: 0.4, compromise: 0.3, limited_war: -2.0, nuclear_war: -40}}
+        script:
+          # Hidden types with leaders' own beliefs (user decisions 2026-10-14, E41):
+          # - Soviet stakes: would Moscow fight for Nasser at all? A committed USSR (the 1955
+          #   arms deal, Khrushchev's courting of Nasser) counts an allied victory as a heavy
+          #   loss, sized so it would intervene if Britain pressed on after paying the
+          #   intervention's own cost; a bluffing one would not. In fact a bluff (Khrushchev
+          #   later admitted it; no forces were readied), but London, Paris and Washington
+          #   could not be sure: the US checked by U-2 for Soviet forces in Syria, and
+          #   Eisenhower spoke of hitting back "with everything in the bucket". Beliefs and
+          #   the offset are placeholders.
+          # - US stakes: Eisenhower opposed force from the start (his September letters: US
+          #   opinion "flatly rejects" it). Eden expected acquiescence: Macmillan, after seeing
+          #   Eisenhower on 25 September, told him "I know Ike. He will lie doggo". An
+          #   acquiescent US would put the alliance above the Arab world (offset placeholder).
+          - stage: types
+            roles:
+              USSR:
+                stakes: {committed: {weight: 0.1, offsets: {a_prevails: -7.5}}, bluffing: {weight: 0.9}}
+                stakes_beliefs: {UK: {committed: 0.3, bluffing: 0.7}, FRA: {committed: 0.3, bluffing: 0.7}, USA: {committed: 0.3, bluffing: 0.7}}
+              USA:
+                stakes: {opposed: {weight: 1.0}, acquiescent: {weight: 0.0, offsets: {a_prevails: 1.0}}}
+                stakes_beliefs: {UK: {opposed: 0.2, acquiescent: 0.8}, FRA: {opposed: 0.2, acquiescent: 0.8}}
+          - {stage: move, actor: UK, options: [{id: refrain, kind: concede}, {id: invade, kind: escalate}]}
+          - {stage: move, actor: FRA, options: [{id: stay_out, kind: hold}, {id: join_invasion, kind: escalate}]}
+          - {stage: move, actor: EGY, options: [{id: accept_terms, kind: concede}, {id: resist, kind: hold}]}
+          - {stage: move, actor: USSR, options: [{id: stay_out, kind: hold}, {id: threaten_intervention, kind: escalate}]}
+          # Washington may also stand aside, as Eden expected it to
+          - {stage: partner, actor: USA, options: [{id: back_allies, target: b, risk_multiplier: 0.8}, {id: financial_pressure, target: a, continue_cost: 1.5}, {id: stand_aside, target: a}]}
+          - {stage: move, actor: UK, options: [{id: withdraw, kind: concede}, {id: press_on, kind: hold}]}
+          # The threat's follow-through: if Britain presses on, Moscow intervenes or not
+          - {stage: move, actor: USSR, options: [{id: stand_aside, kind: hold}, {id: intervene, kind: fight}]}
+          # A regional war, never a nuclear one: no nuclear forces were readied, and the
+          # threat was a bluff. Under derived payoffs a nuclear war is worth -2000, so even
+          # the old 1% share outweighed every stake (user decision 2026-10-14, E41)
+          - {stage: accident, base: 0.01, per_rung: 0.02}
+        final_outcome: a_prevails
+      bindings:
+        # The pressure bit through Britain's weakness (Kunz): reserves fell about $279 million
+        # in November 1956, and the US held back an IMF drawing until Britain withdrew. Its
+        # cost rises as Britain's economy weakens: 1.5 at the 1956 level (user decision
+        # 2026-10-14, E41)
+        - {at: script.5.options.1.continue_cost, base: 4.65, terms: {powers.UK.economy: -10.0}, clamp: [0.5, 4.0]}
+      historical:
+        choices: {UK: [invade, withdraw], FRA: [join_invasion], EGY: [resist], USSR: [threaten_intervention], USA: [financial_pressure]}
+        chance: [bluffing, calm]
+        outcome: b_prevails
+    # Effects completed from the record (user decision 2026-10-14, E41; sizes are placeholders).
+    # Prestige effects were removed (prestige left the goals on 2026-10-10)
+    outcomes:
+      a_prevails:
+        narrative: "British and French forces retake the canal; the Arab world turns against the West."
+        effects:
+          - {shift_influence: {region: middle_east, toward: UK, amount: 0.15}}
+          - {shift_influence: {region: middle_east, toward: FRA, amount: 0.05}}
+          # Nasser's aid to Algeria's FLN cut off (Mollet's aim)
+          - {shift_influence: {region: north_africa, toward: FRA, amount: 0.05}}
+          # Eisenhower: "How could we possibly support Britain and France if in doing so we
+          # lose the whole Arab world?" The Arab world turns to Moscow
+          - {shift_influence: {region: middle_east, toward: USA, amount: -0.1}}
+          - {shift_influence: {region: middle_east, toward: USSR, amount: 0.05}}
+          # Syria cut the IPC pipeline; Saudi Arabia embargoed Britain and France
+          - {add: {path: regions.middle_east.stability, value: -0.15}}
+          # aggression unpunished: the US had pledged in the 1950 Tripartite Declaration to act
+          # against force across the armistice lines ("one law", Eisenhower, 31 October)
+          - {add: {path: powers.USA.credibility, value: -0.05}}
+      b_prevails:
+        narrative: "Under American financial pressure and Soviet threats, Britain and France withdraw."
+        effects:
+          - {flag: suez_humiliation}
+          - {shift_influence: {region: middle_east, toward: UK, amount: -0.2}}
+          - {shift_influence: {region: middle_east, toward: FRA, amount: -0.05}}
+          # Soviet arms and standing ("Moscow saved Egypt"); the US replaces Britain as the
+          # leading Western power in the region (the Eisenhower Doctrine, January 1957)
+          - {shift_influence: {region: middle_east, toward: USSR, amount: 0.1}}
+          - {shift_influence: {region: middle_east, toward: USA, amount: 0.05}}
+          # Nasser's standing lifts the FLN
+          - {shift_influence: {region: north_africa, toward: FRA, amount: -0.05}}
+          # the US upheld the UN principle and its 1950 Tripartite pledge
+          - {add: {path: powers.USA.credibility, value: 0.05}}
+      compromise: {narrative: "The canal crisis is settled through the United Nations.", effects: [{add: {path: regions.middle_east.stability, value: 0.05}}]}
+      limited_war:
+        narrative: "The Suez war widens into a regional conflict."
+        effects:
+          - {tension: 0.25}
+          - {add: {path: regions.middle_east.stability, value: -0.3}}
+          - {add: {path: powers.UK.stability, value: -0.05}}
+          - {add: {path: powers.FRA.stability, value: -0.05}}
+          # a war in which Moscow might join is a superpower confrontation, which Eisenhower
+          # wanted ended fast
+          - {relations: {a: USA, b: USSR, add: -0.2}}
+      nuclear_war: {effects: [{end_campaign: nuclear_war}]}
+    # Consequences of actions, whatever the outcome; derived payoffs count them as the
+    # action's costs (user decision 2026-10-14, E41)
+    tags:
+      "USSR:move=threaten_intervention": {effects: [{shift_influence: {region: middle_east, toward: USSR, amount: 0.05}}]}
+      # The rift came with Washington's opposition: an acquiescent US that stood aside would
+      # cause none, as Eden expected. It was short-lived with Britain (restored at Bermuda,
+      # March 1957) and longer with France (de Gaulle)
+      "USA:partner=financial_pressure":
+        effects:
+          - {relations: {a: USA, b: UK, add: -0.05}}
+          - {relations: {a: USA, b: FRA, add: -0.1}}
+      # Moscow's intervention against Britain and France: its own cost
+      "USSR:move=intervene":
+        effects:
+          - {add: {path: powers.USSR.stability, value: -0.05}}
+          - {relations: {a: USSR, b: UK, add: -0.3}}
+          - {relations: {a: USSR, b: FRA, add: -0.3}}
+          - {relations: {a: USSR, b: USA, add: -0.3}}
+
+  - id: taiwan_strait_1958
+    kind: major
+    title: The Second Taiwan Strait Crisis
+    window: {earliest: 1958-Q3, latest: 1959-Q4}
+    historical_date: 1958-Q3
+    when:
+      all:
+        - status: {power: PRC, in: [active]}
+        - fired: taiwan_strait_1954
+        - flag: roc_on_taiwan
+        - regime: {power: PRC, in: [ccp]}
+    model:
+      family: crisis
+      tier: 2
+      region: taiwan
+      config:
+        roles:
+          PRC: {side: a, values: {a_prevails: 1.0, b_prevails: -0.5, compromise: 0.2, limited_war: -4.0, nuclear_war: -40}, escalation_cost: 0.1, high_resolve_war_factor: 0.7}
+          USA: {side: b, values: {a_prevails: -1.0, b_prevails: 1.0, compromise: 0.3, limited_war: -2.0, nuclear_war: -40}, escalation_cost: 0.1, audience_cost: 1.0, high_resolve_war_factor: 0.5}
+          USSR: {side: neutral, values: {a_prevails: 0.3, b_prevails: -0.2, compromise: 0.2, limited_war: -2.0, nuclear_war: -40}}
+        script:
+          - {stage: types, roles: {USA: {p_high_resolve: 0.6}}}
+          - {stage: move, actor: PRC, options: [{id: stand_down, kind: concede}, {id: shell_quemoy, kind: escalate, rungs: 1}, {id: blockade_quemoy, kind: escalate, rungs: 2}]}
+          - {stage: partner, actor: USSR, options: [{id: stay_aloof, target: neutral}, {id: back_beijing, target: b, continue_cost: 0.3, risk_multiplier: 1.2}]}
+          - {stage: move, actor: USA, options: [{id: abandon_islands, kind: concede}, {id: escort_convoys, kind: escalate}, {id: defend_islands, kind: fight}]}
+          - {stage: move, actor: PRC, options: [{id: wind_down, kind: concede}, {id: persist, kind: hold}]}
+          - {stage: accident, per_rung: 0.02, nuclear_per_rung: 0.1}
+      bindings:
+        - {at: script.0.roles.USA.p_high_resolve, base: 0.2, terms: {powers.USA.credibility: 0.6}, clamp: [0.05, 0.95]}
+      historical:
+        choices: {PRC: [shell_quemoy, wind_down], USSR: [stay_aloof], USA: [escort_convoys]}
+        chance: [high, calm]
+        outcome: b_prevails
+    outcomes:
+      a_prevails: {narrative: "The Nationalist garrisons on Quemoy and Matsu surrender.", effects: [{shift_influence: {region: taiwan, toward: PRC, amount: 0.1}}, {add: {path: powers.USA.credibility, value: -0.1}}]}
+      b_prevails: {narrative: "American convoys break the blockade; Beijing shells on alternate days only.", effects: [{add: {path: powers.USA.credibility, value: 0.05}}, {add: {path: powers.PRC.prestige, value: -0.05}}]}
+      compromise: {narrative: "The crisis ends without a clear result.", effects: []}
+      limited_war: {narrative: "Fighting erupts in the Taiwan Strait.", effects: [{tension: 0.2}, {relations: {a: USA, b: PRC, add: -0.3}}]}
+      nuclear_war: {effects: [{end_campaign: nuclear_war}]}
+    tags:
+      "USSR:partner=stay_aloof": {effects: [{relations: {a: PRC, b: USSR, add: -0.15}}]}
+      "USSR:partner=back_beijing": {effects: [{relations: {a: PRC, b: USSR, add: 0.15}}]}
+
+  - id: berlin_ultimatum
+    kind: major
+    title: Khrushchev's Berlin ultimatum
+    window: {earliest: 1958-Q4, latest: 1960-Q4}
+    historical_date: 1958-Q4
+    when:
+      all:
+        - flag: [germany_divided, berlin_settled]
+        - leader: {power: USSR, in: [khrushchev]}
+    narrative: "Khrushchev demands that West Berlin become a demilitarized free city within six months."
+    model:
+      family: bargaining
+      tier: 2
+      cadence: quarterly
+      region: germany
+      config:
+        roles: {A: USSR, B: USA}
+        grid: [0.0, 0.25, 0.5, 0.75, 1.0]
+        horizon: 10
+        first_proposer: A
+        surplus: 2.0
+        sides:
+          A: {discount: 0.95, delay_cost: 0.04, breakdown_value: -5.0, impasse_value: -0.3, commitment: 0.5, commitment_cost: 0.8}
+          B: {discount: 0.95, delay_cost: 0.02, breakdown_value: -5.0, impasse_value: 0.2, commitment: 0.0, commitment_cost: 1.0}
+        breakdown: {base: 0.01, growth: 0.005, max: 0.06}
+        consent:
+          - {role: UK, base: 0.5, per_share: -1.0, veto_value: 0.0}
+          - {role: FRA, base: 0.3, per_share: -1.0, veto_value: 0.0}
+      bindings:
+        - {at: sides.A.breakdown_value, base: -5.0, terms: {powers.USSR.nuclear: 0.2, powers.USA.nuclear: -0.2}, clamp: [-9.0, -2.0]}
+        - {at: sides.B.breakdown_value, base: -5.0, terms: {powers.USA.nuclear: 0.2, powers.USSR.nuclear: -0.2}, clamp: [-9.0, -2.0]}
+      historical:
+        choices: {USSR: [commit, offer_100, reject, offer_075, reject, offer_050, reject, offer_050, reject, offer_025, reject], USA: [commit, reject, offer_000, reject, offer_000, reject, offer_000, reject, offer_000, reject, offer_000]}
+        chance: [talks_continue*10]
+        outcome: impasse
+    outcomes:
+      agreement: {narrative: "West Berlin's status is renegotiated.", effects: [{shift_influence: {region: germany, toward: USSR, amount: 0.3, scale_by: share}}, {add: {path: powers.USA.credibility, value: -0.2, scale_by: share}}, {flag: berlin_status_changed}]}
+      breakdown: {narrative: "Soviet and American tanks face off; the Berlin crisis turns violent.", effects: [{tension: 0.4}, {flag: berlin_war_scare}, {relations: {a: USA, b: USSR, add: -0.3}}]}
+      impasse: {narrative: "The deadlines lapse without agreement; East Germans keep fleeing west.", effects: [{flag: berlin_impasse}, {add: {path: regions.eastern_europe.stability, value: -0.1}}]}
+      vetoed: {narrative: "London and Paris reject the deal.", effects: [{flag: berlin_impasse}, {relations: {a: USA, b: FRA, add: -0.1}}]}
+    tags:
+      "USSR:broke_commitment": {effects: [{add: {path: powers.USSR.credibility, value: -0.1}}]}
+      "USA:broke_commitment": {effects: [{add: {path: powers.USA.credibility, value: -0.15}}]}
+
+  - id: congo_crisis
+    kind: major
+    title: The Congo Crisis
+    window: {earliest: 1960-Q3, latest: 1961-Q4}
+    historical_date: 1960-Q3
+    when: {flag: congo_independent}
+    model:
+      family: alignment
+      tier: 2
+      region: central_africa
+      config:
+        patrons:
+          USA: {offer_value: {none: 0.0, aid: 0.6, aid_guarantee: 1.0}, offer_cost: {none: 0.0, aid: 0.1, aid_guarantee: 0.25}, gain: {CONGO: 1.0}, loss: {CONGO: 0.5}}
+          USSR: {offer_value: {none: 0.0, aid: 0.6, aid_guarantee: 1.0}, offer_cost: {none: 0.0, aid: 0.1, aid_guarantee: 0.3}, gain: {CONGO: 1.0}, loss: {CONGO: 0.3}}
+        clients:
+          CONGO: {mode: chance, affinity: {USA: 0.3, USSR: 0.2}, nonaligned: 0.2, temperature: 0.4}
+      bindings:
+        - {at: clients.CONGO.affinity.USA, base: 0.0, terms: {regions.central_africa.influence.USA: 1.0, regions.central_africa.influence.UK: 0.5}, clamp: [-1.0, 1.5]}
+        - {at: clients.CONGO.affinity.USSR, base: 0.1, terms: {regions.central_africa.influence.USSR: 1.0}, clamp: [-1.0, 1.5]}
+      historical:
+        choices: {USA: [aid_guarantee], USSR: [aid]}
+        chance: [aligned_USA]
+        outcome: aligned_USA
+    outcomes:
+      aligned_USA: {narrative: "Mobutu takes power with Western backing; Lumumba is murdered.", effects: [{shift_influence: {region: central_africa, toward: USA, amount: 0.25}}]}
+      aligned_USSR: {narrative: "Lumumba's government survives with Soviet help.", effects: [{shift_influence: {region: central_africa, toward: USSR, amount: 0.25}}]}
+      nonaligned: {narrative: "The Congo fragments; no outside power prevails.", effects: [{add: {path: regions.central_africa.stability, value: -0.1}}]}
+
+  - id: bay_of_pigs
+    kind: major
+    title: The Bay of Pigs
+    window: {earliest: 1961-Q2, latest: 1962-Q2}
+    historical_date: 1961-Q2
+    when:
+      all:
+        - flag: cuba_aligned_soviet
+        - focus: {power: USA, region: caribbean, mode: covert, within_years: 1}
+    model:
+      family: intervention
+      tier: 2
+      region: caribbean
+      config:
+        roles: {patron: USA, rival: USSR}
+        p_strong: 0.6
+        report_accuracy: 0.6
+        values:
+          patron: {reformed: 0.2, crushed: 1.5, defected: -1.0, quagmire: -1.5, clash: -20}
+          rival: {reformed: 0.0, crushed: -1.0, defected: 1.0, quagmire: 0.8, clash: -20}
+        costs: {crackdown: 0.2, intervene: 0.8, back_down: 1.0, covert_aid: 0.2, confront: 0.5}
+        clash_risk: 0.1
+      bindings:
+        - {at: p_strong, base: 0.4, terms: {regions.caribbean.influence.USSR: 0.8}, clamp: [0.1, 0.95]}
+      historical:
+        choices: {USA: [crackdown], USSR: [covert_aid]}
+        chance: [strong, alarming, defected]
+        outcome: defected
+    outcomes:
+      reformed: {narrative: "Castro moderates and repairs relations with Washington.", effects: [{shift_influence: {region: caribbean, toward: USA, amount: 0.1}}]}
+      crushed: {narrative: "Castro's regime falls.", effects: [{shift_influence: {region: caribbean, toward: USA, amount: 0.4}}, {unflag: cuba_aligned_soviet}, {flag: castro_ousted}]}
+      defected: {narrative: "The exile brigade is destroyed at the Bay of Pigs; Castro is strengthened.", effects: [{flag: bay_of_pigs_failure}, {add: {path: powers.USA.prestige, value: -0.1}}, {shift_influence: {region: caribbean, toward: USSR, amount: 0.1}}]}
+      quagmire: {narrative: "An American-backed insurgency drags on in Cuba.", effects: [{flag: cuban_insurgency}, {add: {path: powers.USA.stability, value: -0.05}}]}
+      clash: {narrative: "American and Soviet forces exchange fire off Cuba.", effects: [{tension: 0.4}, {relations: {a: USA, b: USSR, add: -0.4}}, {flag: caribbean_clash}]}
+
+  - id: cuban_missile_crisis
+    kind: major
+    title: The Cuban Missile Crisis
+    window: {earliest: 1962-Q4, latest: 1964-Q4}
+    historical_date: 1962-Q4
+    hazard: 0.5
+    when:
+      all:
+        - flag: cuba_aligned_soviet
+        - no_flag: castro_ousted
+        - compare: {path: powers.USSR.nuclear, op: lt, path_rhs: powers.USA.nuclear, scale: 0.8}
+        - compare: {path: powers.USSR.tech_missile, op: ge, value: 1.0}
+    narrative: "U-2 photographs reveal Soviet medium-range missiles in Cuba."
+    # Light review (2026-10-26, EXPERIMENTS.md E47; Fursenko and Naftali, "One Hell of a
+    # Gamble", 1997; Allison and Zelikow, Essence of Decision, 1999; May and Zelikow, The
+    # Kennedy Tapes, 1997; Dobbs, One Minute to Midnight, 2008; Sagan, The Limits of
+    # Safety, 1993). Mechanism: private information about resolve under the risk of
+    # inadvertent war (Schelling's "threat that leaves something to chance"), resolved by
+    # a secret side payment (the Jupiters in Turkey).
+    # - Khrushchev expected a fait accompli Kennedy would accept, reading him as weak after
+    #   the Bay of Pigs and Vienna: his own prior on US resolve, bound to US credibility.
+    # - Washington did not know of the ~42,000 Soviet troops (the CIA estimated ~10,000) or
+    #   the ~100 tactical nuclear warheads (revealed in 1992): its own prior that Soviet
+    #   forces were not ready for nuclear use, bound to its intelligence (space) capacity.
+    # - Khrushchev's motive was also the strategic balance: the missiles kept in Cuba add to
+    #   Soviet strategic forces (b_prevails).
+    # - If no one concedes, deals or fights, the missiles stay (final_outcome b_prevails):
+    #   a compromise comes only from an actual deal.
+    model:
+      family: crisis
+      tier: 1
+      holdout: true
+      payoffs: derived
+      effects: contract
+      region: caribbean
+      config:
+        roles:
+          USA: {side: a, values: {a_prevails: 2.0, b_prevails: -2.0, compromise: 0.6, limited_war: -6.0, nuclear_war: -50}, escalation_cost: 0.15, audience_cost: 1.0}
+          USSR: {side: b, values: {a_prevails: -2.0, b_prevails: 2.0, compromise: 0.8, limited_war: -6.0, nuclear_war: -50}, escalation_cost: 0.15, audience_cost: 1.5, high_resolve_war_factor: 0.5}
+          # officers (E48): computer-run commands that decide at incidents; they dread war
+          # and a hold costs them their belief that war has begun times their duty
+          B59: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
+          SAM: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
+        script:
+          - stage: types
+            roles:
+              USA: {p_high_resolve: 0.5, resolve_beliefs: {USSR: 0.25}}
+              USSR: {p_high_resolve: 0.4, p_high_readiness: 0.5, readiness_beliefs: {USA: 0.15}}
+          - {stage: intel, about: USSR, observers: [USA], accuracy: 0.75}
+          # the ExComm weighed accepting the missiles (McNamara: "a missile is a missile")
+          - {stage: move, actor: USA, options: [{id: quarantine, kind: escalate, rungs: 1}, {id: air_strike, kind: escalate, rungs: 2}, {id: accept_missiles, kind: concede}]}
+          # conventional clashes at the quarantine line; nuclear risk comes from the officers
+          - {stage: accident, per_rung: 0.015, readiness_multiplier: 1.5}
+          # Moscow's delegation: SAM fire authority lay with Pliyev's command in Cuba;
+          # Khrushchev centralized it only after the U-2 fell (Fursenko and Naftali 1997)
+          - {stage: move, actor: USSR, options: [{id: keep_delegation, kind: hold}, {id: centralize, kind: hold, control: 0.8}]}
+          - {stage: signal, actor: USSR, options: [{id: conciliatory, stance: soft}, {id: hardline, stance: hard}]}
+          # Khrushchev's letters of 26 and 27 October as one signal (the second letter's
+          # revision dropped in E48 to keep the tree solvable with the officers)
+          # the SAM commanders who shot down Anderson's U-2 without Moscow's order (27
+          # October); the ExComm had agreed to strike the SAM sites if a U-2 fell, and
+          # Kennedy held off (May and Zelikow 1997). A strike on Cuba could turn nuclear
+          # where Soviet tactical warheads were ready (98 FKR and Luna warheads, unknown to
+          # Washington; McNamara at Havana, 1992)
+          - stage: incident
+            officer: SAM
+            command: b
+            per_rung: 0.5
+            temperaments: {steady: {weight: 0.5, hold_cost: 0.5, fire_cost: 5.0}, jumpy: {weight: 0.5, hold_cost: 15.0}}
+            fire: {leader: USA, launch: limited_war, wait: continue, hold_cost: 0.5, launch_nuclear: 0.2}
+          - {stage: move, actor: USA, options: [{id: negotiate, kind: deal}, {id: maintain_pressure, kind: hold}, {id: escalate, kind: escalate}]}
+          - {stage: respond, actor: USSR}
+          - {stage: move, actor: USSR, options: [{id: withdraw_missiles, kind: concede}, {id: stand_firm, kind: hold}]}
+          # if Moscow stands firm, the quarantine and its incidents go on: Arkhipov aboard
+          # B-59 (27 October), one of four nuclear-armed Foxtrots forced to surface under
+          # practice depth charges, out of contact with Moscow (so no control order reaches
+          # it); the captain wanted to fire and Arkhipov refused (Savranskaya, J. Strategic
+          # Studies 28, 2005; Dobbs 2008). A nuclear torpedo puts Kennedy to retaliate
+          # (McNamara at Havana, 1992: retaliation "no doubt") or not. It is the risk of
+          # continuing that Khrushchev's letter of 26 October calls "the knot of war"
+          - stage: incident
+            officer: B59
+            command: neutral
+            per_rung: 0.8
+            cap: 0.95
+            needs_readiness: true
+            temperaments: {steady: {weight: 0.9, hold_cost: 0.5, fire_cost: 5.0}, jumpy: {weight: 0.1, hold_cost: 15.0}}
+            fire: {leader: USA, launch: nuclear_war, wait: limited_war, hold_cost: 250.0}
+          - {stage: accident, base: 0.005, per_rung: 0.02, readiness_multiplier: 1.5}
+        final_outcome: b_prevails
+      bindings:
+        - {at: script.0.roles.USSR.p_high_resolve, base: 0.1, terms: {powers.USSR.risk_tolerance: 0.4}, clamp: [0.05, 0.95]}
+        - {at: script.1.accuracy, base: 0.55, terms: {powers.USA.tech_space: 0.1}, clamp: [0.55, 0.95]}
+        # Khrushchev's prior that Kennedy is resolved rises with US credibility: 0.25 at the
+        # 1962 replay world (credibility 0.86)
+        - {at: script.0.roles.USA.resolve_beliefs.USSR, base: -0.18, terms: {powers.USA.credibility: 0.5}, clamp: [0.05, 0.95]}
+        # Washington's prior that Soviet forces are nuclear-ready rises with its intelligence
+        # capacity toward nature's: 0.15 at the replay world (space technology 2.73)
+        - {at: script.0.roles.USSR.readiness_beliefs.USA, base: -0.12, terms: {powers.USA.tech_space: 0.1}, clamp: [0.05, 0.5]}
+      historical:
+        choices: {USA: [quarantine, wait, negotiate], USSR: [keep_delegation, hardline, accept], B59: [restrain], SAM: [fire]}
+        chance: [high, low, high, alarming, calm, "incident:jumpy"]
+        outcome: compromise
+    # effects: the shared effects contract (contract.yaml) plus these documented additions
+    outcomes:
+      a_prevails: {narrative: "Khrushchev withdraws the missiles without concessions.", additions: [{flag: [soviet_missiles_withdrawn, cuban_missile_crisis_resolved]}]}
+      # about 60 missiles planned for Cuba (36 R-12, 24 R-14) against about 200 Soviet
+      # intercontinental launchers (some 44 ICBMs, 155 bombers; Garthoff, Reflections on the
+      # Cuban Missile Crisis, 1989): Soviet strategic forces up by about 30%
+      b_prevails: {narrative: "The missiles stay in Cuba.", additions: [{flag: [soviet_missiles_in_cuba, cuban_missile_crisis_resolved]}, {multiply: {path: powers.USSR.nuclear, factor: 1.3}}]}
+      compromise: {narrative: "The missiles leave Cuba in exchange for a no-invasion pledge and the quiet removal of Jupiters from Turkey.", additions: [{flag: [soviet_missiles_withdrawn, jupiters_withdrawn, cuban_missile_crisis_resolved]}]}
+      limited_war: {narrative: "American strikes on Cuba trigger a conventional war in the Caribbean.", additions: [{flag: cuban_war}]}
+      nuclear_war: {narrative: "The crisis ends in nuclear war."}
+    tags:
+      "USSR:backed_down_after_commitment": {effects: [{add: {path: powers.USSR.credibility, value: -0.1}}]}
+      "USA:backed_down_after_commitment": {effects: [{add: {path: powers.USA.credibility, value: -0.1}}]}

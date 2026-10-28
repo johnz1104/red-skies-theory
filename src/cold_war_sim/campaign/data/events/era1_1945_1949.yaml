@@ -1,0 +1,918 @@
+# Era I, 1945-1949: origins of the Cold War. All values illustrative.
+era: 1
+title: Origins (1945-1949)
+events:
+  # ------------------------------------------------------------- cutscenes
+  - id: long_telegram
+    kind: cutscene
+    title: The Long Telegram
+    window: {earliest: 1946-Q1, latest: 1946-Q4}
+    historical_date: 1946-Q1
+    narrative: Kennan's Long Telegram frames Soviet policy as expansionist; containment takes shape in Washington.
+    effects:
+      - flag: containment_doctrine
+      - tension: 0.05
+      - relations: {a: USA, b: USSR, add: -0.15}
+
+  - id: iron_curtain_speech
+    kind: cutscene
+    title: The Iron Curtain speech
+    window: {earliest: 1946-Q1, latest: 1946-Q4}
+    historical_date: 1946-Q1
+    narrative: Churchill warns at Fulton that an iron curtain has descended across Europe.
+    effects:
+      - flag: iron_curtain
+      - tension: 0.03
+      - relations: {a: UK, b: USSR, add: -0.1}
+
+  - id: truman_doctrine
+    kind: cutscene
+    title: The Truman Doctrine
+    window: {earliest: 1947-Q1, latest: 1948-Q4}
+    historical_date: 1947-Q1
+    when:
+      all:
+        - active: greek_civil_war
+        - compare: {path: powers.UK.economy, op: lt, value: 0.45}
+    narrative: Britain can no longer carry Greece and Turkey; the United States pledges to support free peoples resisting subjugation.
+    effects:
+      - flag: truman_doctrine
+      - shift_influence: {region: mediterranean, toward: USA, amount: 0.1}
+      - add: {path: powers.USA.credibility, value: 0.05}
+      - relations: {a: USA, b: USSR, add: -0.1}
+
+  - id: indian_independence
+    kind: cutscene
+    title: Indian independence and partition
+    window: {earliest: 1947-Q3, latest: 1950-Q4}
+    historical_date: 1947-Q3
+    when: {compare: {path: powers.UK.economy, op: lt, value: 0.5}}
+    narrative: India and Pakistan become independent; the Raj ends amid partition violence.
+    effects:
+      - flag: india_independent
+      - shift_influence: {region: south_asia, toward: UK, amount: -0.35}
+      - add: {path: regions.south_asia.stability, value: -0.1}
+      - add: {path: powers.UK.prestige, value: -0.05}
+
+  - id: cominform
+    kind: cutscene
+    title: The Cominform
+    window: {earliest: 1947-Q4, latest: 1948-Q4}
+    historical_date: 1947-Q4
+    when: {outcome: {event: marshall_plan, in: ["USSR:forbade", "EAST:aligned_USSR", "EAST:nonaligned"]}}
+    narrative: Moscow forbids Eastern participation in the Marshall Plan and founds the Cominform.
+    effects:
+      - flag: cominform
+      - shift_influence: {region: eastern_europe, toward: USSR, amount: 0.1}
+
+  - id: czechoslovak_coup
+    kind: cutscene
+    title: The Czechoslovak coup
+    window: {earliest: 1948-Q1, latest: 1949-Q4}
+    historical_date: 1948-Q1
+    when:
+      all:
+        - compare: {path: regions.eastern_europe.influence.USSR, op: ge, value: 0.5}
+        - no_flag: eastern_marshall
+    narrative: Communists seize power in Prague; Soviet control of Eastern Europe is consolidated.
+    effects:
+      - flag: czech_coup
+      - set_controller: {region: eastern_europe, to: USSR}
+      - tension: 0.05
+      - relations: {a: USA, b: USSR, add: -0.05}
+
+  - id: tito_stalin_split
+    kind: cutscene
+    title: The Tito-Stalin split
+    window: {earliest: 1948-Q2, latest: 1949-Q4}
+    historical_date: 1948-Q2
+    when: {leader: {power: USSR, in: [stalin]}}
+    narrative: Yugoslavia is expelled from the Cominform and charts an independent course.
+    effects:
+      - flag: yugoslavia_independent
+      - add: {path: powers.USSR.prestige, value: -0.03}
+      - shift_influence: {region: mediterranean, toward: USSR, amount: -0.05}
+
+  - id: german_currency_reform
+    kind: cutscene
+    title: Currency reform in the western zones
+    window: {earliest: 1948-Q2, latest: 1949-Q4}
+    historical_date: 1948-Q2
+    when: {outcome: {event: marshall_plan, in: ["UK:aligned_USA", "FRA:aligned_USA"]}}
+    narrative: The western zones introduce the Deutsche Mark; Moscow answers by sealing off Berlin.
+    effects:
+      - flag: western_zones_merged
+
+  - id: israel_founded
+    kind: cutscene
+    title: Founding of Israel
+    window: {earliest: 1948-Q2, latest: 1948-Q4}
+    historical_date: 1948-Q2
+    narrative: Israel declares independence; war with its neighbours follows.
+    effects:
+      - flag: israel_founded
+      - add: {path: regions.middle_east.stability, value: -0.1}
+      - shift_influence: {region: middle_east, toward: UK, amount: -0.1}
+
+  - id: nato_founded
+    kind: cutscene
+    title: The North Atlantic Treaty
+    window: {earliest: 1949-Q2, latest: 1951-Q4}
+    historical_date: 1949-Q2
+    priority: 5
+    excludes: [western_union_only]
+    when:
+      all:
+        - any: [{fired: berlin_blockade}, {flag: czech_coup}]
+        - no_flag: berlin_clash
+        - compare: {path: regions.western_europe.influence.USA, op: ge, value: 0.3}
+    narrative: Twelve nations sign the North Atlantic Treaty; an attack on one is an attack on all.
+    effects:
+      - flag: nato
+      - add: {path: powers.USA.credibility, value: 0.1}
+      - relations: {a: USA, b: UK, add: 0.1}
+      - relations: {a: USA, b: FRA, add: 0.1}
+      - shift_influence: {region: western_europe, toward: USA, amount: 0.1}
+      - tension: 0.05
+
+  - id: western_union_only
+    kind: cutscene
+    title: Western Union without America
+    window: {earliest: 1950-Q1, latest: 1951-Q4}
+    when: {no_flag: nato}
+    narrative: Without an American guarantee, Western Europe's defence rests on the Brussels Treaty alone.
+    effects:
+      - flag: western_union
+      - add: {path: regions.western_europe.stability, value: -0.1}
+      - relations: {a: UK, b: FRA, add: 0.1}
+
+  - id: frg_gdr_founded
+    kind: cutscene
+    title: Two German states
+    window: {earliest: 1949-Q3, latest: 1950-Q4}
+    historical_date: 1949-Q3
+    when: {fired: german_currency_reform}
+    narrative: The Federal Republic and the German Democratic Republic are proclaimed; Germany is divided.
+    effects:
+      - flag: germany_divided
+      - unflag: germany_occupied
+
+  - id: soviet_atomic_bomb
+    kind: cutscene
+    title: The Soviet atomic bomb
+    window: {earliest: 1947-Q1}
+    historical_date: 1949-Q3
+    when: {compare: {path: powers.USSR.tech_nuclear, op: ge, value: 1.0}}
+    narrative: The Soviet Union tests its first atomic bomb; the American monopoly is over.
+    effects:
+      - flag: soviet_bomb
+      - unflag: us_nuclear_monopoly
+      - add: {path: powers.USSR.nuclear, value: 0.3}
+      - add: {path: powers.USSR.tech_nuclear, value: 0.2}
+      - add: {path: powers.USSR.prestige, value: 0.1}
+      - tension: 0.1
+
+  - id: prc_proclaimed
+    kind: cutscene
+    title: The People's Republic of China
+    window: {earliest: 1946-Q4}
+    historical_date: 1949-Q4
+    priority: 10
+    when: {outcome: {event: chinese_civil_war, in: [a_victory, b_withdrew]}}
+    narrative: Mao proclaims the People's Republic in Beijing; the Nationalists retreat to Taiwan.
+    effects:
+      - flag: [prc_founded, roc_on_taiwan]
+      - status: {power: PRC, to: active}
+      - set_controller: {region: china_mainland, to: PRC}
+      - shift_influence: {region: taiwan, toward: USA, amount: 0.2}
+      - relations: {a: USA, b: PRC, add: -0.3}
+
+  - id: ccp_defeated
+    kind: cutscene
+    title: The Communists defeated
+    # no window: the war's outcome is the condition, and the Nationalists' derived values
+    # read this handover wherever their victory is valued (E40)
+    priority: 10
+    when: {outcome: {event: chinese_civil_war, in: [b_victory, a_withdrew]}}
+    narrative: The Nationalist government prevails; the Communist movement is broken and the Nationalists take China's seat.
+    effects:
+      - flag: kmt_holds_china
+      - regime: {power: PRC, to: kmt}
+      - status: {power: PRC, to: active}
+      - set_controller: {region: china_mainland, to: PRC}
+      - relations: {a: USA, b: PRC, add: 0.6}
+      - relations: {a: USSR, b: PRC, add: -0.7}
+      - leader: chiang_kai_shek
+
+  - id: china_partitioned
+    kind: cutscene
+    title: China partitioned
+    window: {earliest: 1946-Q4}
+    priority: 10
+    when: {outcome: {event: chinese_civil_war, in: [partition, stalemate]}}
+    narrative: China is divided between a Communist north and a Nationalist south.
+    effects:
+      - flag: [prc_founded, china_divided]
+      - status: {power: PRC, to: active}
+      # The Nationalists survive in the south as a US client and a standing threat to
+      # the Communist regime (review of 2026-10-10; EXPERIMENTS.md E17). The influence each
+      # side keeps follows the line, in the war's own outcomes (E40)
+      - add: {path: powers.PRC.stability, value: -0.1}
+
+  # Korea's occupation and the road to war (review of 2026-10-11/12; EXPERIMENTS.md E28).
+  # Both occupiers leave once the two states exist; the US withdrawal is a decision, and once
+  # both have gone the Korean War can start, if Stalin approves.
+  - id: korean_states_founded
+    kind: cutscene
+    title: Two Korean states
+    window: {earliest: 1948-Q3}
+    historical_date: 1948-Q3
+    when: {flag: korea_divided}
+    # The US-Soviet Joint Commission failed (1946-47); the US took Korea to the UN
+    # (September 1947), and UN-supervised elections were held in the south (May 1948).
+    narrative: "The Republic of Korea is proclaimed in Seoul under Syngman Rhee (15 August), the Democratic People's Republic in Pyongyang under Kim Il-sung (9 September)."
+    effects: [{flag: korean_states}]
+
+  - id: soviet_troops_leave_korea
+    kind: cutscene
+    title: Soviet troops leave North Korea
+    window: {earliest: 1948-Q4}
+    historical_date: 1948-Q4
+    when: {flag: [korean_states, soviet_troops_korea]}
+    narrative: "The last Soviet troops leave North Korea, leaving a Korean People's Army armed with Soviet tanks and aircraft."
+    effects: [{unflag: soviet_troops_korea}, {flag: soviet_left_korea}]
+
+  - id: us_korea_garrison
+    kind: decision
+    title: American troops in South Korea
+    window: {earliest: 1949-Q1, latest: 1953-Q4}
+    historical_date: 1949-Q1
+    once: false
+    when:
+      all:
+        - flag: [korean_states, us_troops_korea]
+        - no_flag: korean_war_fought  # after a war, us_korea_troops asks instead
+        - quarter_of_year: 1
+    # Asked each year once the Republic of Korea exists. The Joint Chiefs judged Korea of
+    # little strategic value (September 1947), the army was short of men after demobilization,
+    # NSC-8 (April 1948) set the withdrawal, and the UN asked occupation forces to leave
+    # (December 1948). The last combat troops left in June 1949; about 500 advisers stayed.
+    # Staying ties down forces needed elsewhere: about 45,000 troops, some 3% of US forces
+    # (placeholder). The risk of war after a withdrawal is counted through the Korean War's
+    # reference play (major follow-ons in derive.decision_values).
+    decision: {power: USA, tier: 1, historical: [withdraw]}
+    outcomes:
+      withdraw:
+        narrative: "The last American combat troops leave South Korea; about 500 advisers stay."
+        effects: [{unflag: us_troops_korea}, {flag: us_left_korea}, {add: {path: powers.USA.conventional, value: 0.1}}]
+      keep_garrison:
+        narrative: "American troops stay in South Korea for another year."
+
+  - id: sino_soviet_treaty
+    kind: cutscene
+    title: The Sino-Soviet treaty
+    window: {earliest: 1949-Q4, latest: 1951-Q4}
+    historical_date: 1950-Q1
+    # Only after a full Communist victory (user decision 2026-10-11; EXPERIMENTS.md E25): the 1950
+    # treaty followed the PRC's control of the mainland. Stalin kept ties with the Nationalist
+    # government until 1949 (his ambassador followed it to Canton) and gave partitioned states
+    # (North Korea, East Germany) aid but no formal alliance in his lifetime.
+    when:
+      all:
+        - flag: prc_founded
+        - no_flag: china_divided
+        - compare: {path: powers.PRC.relations.USSR, op: ge, value: 0.0}
+    narrative: Mao and Stalin sign a treaty of friendship and alliance; Soviet aid and advisers flow to China.
+    effects:
+      - flag: sino_soviet_alliance
+      - relations: {a: PRC, b: USSR, add: 0.2}
+      - add: {path: powers.PRC.conventional, value: 0.5}
+      - add: {path: powers.PRC.tech_nuclear, value: 0.1}
+      # Stalin's concessions: joint control of the Changchun railway, the Port Arthur and Dalian
+      # bases, joint companies in Xinjiang
+      - shift_influence: {region: china_mainland, toward: USSR, amount: 0.1}
+
+  # Delayed, risky payoffs (user decisions 2026-10-11; EXPERIMENTS.md E25). Derived payoffs
+  # count them through the lookahead in goals.yaml, so an offer of aid is an investment that
+  # may or may not pay off. Effect sizes are placeholders.
+  - id: european_recovery
+    kind: cutscene
+    title: European recovery
+    window: {earliest: 1949-Q2, latest: 1952-Q4}
+    hazard: 0.25
+    excludes: [western_stagnation]
+    when:
+      all:
+        - flag: marshall_plan_accepted
+        - outcome: {event: marshall_plan, in: ["offer:USA=aid", "offer:USA=aid_guarantee"]}
+        # derailers: a communist surge in the smaller democracies or Italy, or instability
+        - no_flag: western_europe_communist_surge
+        - no_flag: italy_popular_front
+        - compare: {path: regions.western_europe.stability, op: ge, value: 0.4}
+    narrative: "Marshall aid pays off: output passes prewar levels, Europe integrates, and the communist tide recedes."
+    # Anchors: industrial output well above 1938 levels by 1951; the OEEC (1948) and the European
+    # Payments Union (1950); the PCF and PCI leave government and lose ground.
+    effects:
+      - flag: european_recovery
+      - add: {path: regions.western_europe.stability, value: 0.1}
+      - shift_influence: {region: western_europe, toward: USA, amount: 0.08}
+      - add: {path: powers.UK.growth, value: 0.005}
+      - add: {path: powers.FRA.growth, value: 0.005}
+      - add: {path: regions.mediterranean.stability, value: 0.05}
+
+  - id: western_stagnation
+    kind: cutscene
+    title: Western Europe stagnates
+    window: {earliest: 1949-Q2, latest: 1952-Q4}
+    hazard: 0.25
+    excludes: [european_recovery]
+    when:
+      all:
+        - fired: marshall_plan
+        - compare: {path: regions.western_europe.stability, op: lt, value: 0.6}
+        - any:  # the plan unfunded, or derailed
+            - outcome: {event: marshall_plan, in: ["offer:USA=none"]}
+            - flag: western_europe_communist_surge
+            - flag: italy_popular_front
+    narrative: "Without effective aid, recovery stalls; strikes spread and the communist parties gain."
+    # Anchors: the Cominform-ordered strikes in France and Italy (late 1947); the dollar gap.
+    effects:
+      - flag: western_stagnation
+      - add: {path: regions.western_europe.stability, value: -0.1}
+      - shift_influence: {region: western_europe, toward: USSR, amount: 0.05}
+
+  - id: communist_breakthrough
+    kind: cutscene
+    title: Communist breakthrough in Western Europe
+    window: {earliest: 1950-Q1, latest: 1953-Q4}
+    hazard: 0.1
+    excludes: [european_recovery]
+    # What planners feared if aid failed: communist governments in Paris or Rome. Same triggers
+    # as stagnation (the plan unfunded or derailed, Western Europe unstable), read from the
+    # Marshall outcome so the follow-on valuation sees the risk (user decision 2026-10-11; E26).
+    when:
+      all:
+        - fired: marshall_plan
+        - compare: {path: regions.western_europe.stability, op: lt, value: 0.6}
+        - any:
+            - outcome: {event: marshall_plan, in: ["offer:USA=none"]}
+            - flag: western_europe_communist_surge
+            - flag: italy_popular_front
+    narrative: "With recovery stalled, a communist-led coalition takes power in Paris or Rome."
+    # Anchors: the PCF was France's largest party in November 1946 (28%); the Popular Front still
+    # took 31% in Italy in 1948 after heavy US intervention; the Cominform strikes of late 1947;
+    # Clayton's May 1947 warning of "disintegration". Sizes are placeholders.
+    effects:
+      - flag: communist_breakthrough
+      - shift_influence: {region: western_europe, toward: USSR, amount: 0.15}
+      - add: {path: regions.western_europe.stability, value: -0.1}
+
+  - id: eastern_stagnation
+    kind: cutscene
+    title: The East falls behind
+    window: {earliest: 1949-Q2, latest: 1953-Q4}
+    hazard: 0.15
+    when: {flag: eastern_participation_forbidden}
+    narrative: "Cut off from Western aid, Eastern Europe's recovery lags; shortages and discontent grow."
+    # The cost of forbidding: the East's slower recovery fed later unrest (East Berlin 1953,
+    # Poznan 1956). With buffers it costs Soviet security.
+    effects:
+      - flag: eastern_stagnation
+      - add: {path: regions.eastern_europe.stability, value: -0.08}
+      - shift_influence: {region: eastern_europe, toward: USSR, amount: -0.05}
+
+  - id: who_lost_china
+    kind: cutscene
+    title: Who lost China?
+    window: {earliest: 1949-Q3, latest: 1951-Q4}
+    historical_date: 1950-Q1
+    when: {flag: ccp_victory}
+    narrative: "Republicans blame the administration for the Communist victory; McCarthy's charges begin."
+    # Anchors: Acheson's China White Paper (August 1949); McCarthy's Wheeling speech (February
+    # 1950); the long "loss of China" debate (Tsou, America's Failure in China, 1963).
+    effects:
+      - flag: who_lost_china
+      - add: {path: powers.USA.stability, value: -0.05}
+      - add: {path: powers.USA.credibility, value: -0.05}
+      - relations: {a: USA, b: PRC, add: -0.1}
+
+  # -------------------------------------------------------- major events
+  - id: iran_crisis
+    kind: major
+    title: The Iran crisis
+    window: {earliest: 1946-Q1, latest: 1946-Q4}
+    historical_date: 1946-Q1
+    when: {flag: soviet_troops_in_iran}
+    narrative: Soviet troops remain in northern Iran past the withdrawal deadline.
+    model:
+      family: crisis
+      tier: 2
+      region: persian_gulf
+      config:
+        roles:
+          USSR: {side: a, values: {a_prevails: 1.5, b_prevails: -1.0, compromise: 0.5, limited_war: -4, nuclear_war: -40}, escalation_cost: 0.1, audience_cost: 0.5, high_resolve_war_factor: 0.6}
+          USA: {side: b, values: {a_prevails: -1.5, b_prevails: 1.0, compromise: 0.3, limited_war: -3, nuclear_war: -40}, escalation_cost: 0.1, audience_cost: 0.8}
+          UK: {side: b, values: {a_prevails: -1.0, b_prevails: 0.8, compromise: 0.3, limited_war: -3, nuclear_war: -40}}
+        script:
+          - {stage: types, roles: {USSR: {p_high_resolve: 0.3}}}
+          - {stage: move, actor: USSR, options: [{id: withdraw_troops, kind: concede}, {id: keep_troops, kind: escalate}]}
+          - {stage: signal, actor: USA, options: [{id: quiet_diplomacy, stance: soft}, {id: security_council, stance: hard, cost: 0.05}]}
+          - {stage: partner, actor: UK, options: [{id: follow_washington, target: neutral}, {id: press_moscow, target: a, continue_cost: 0.2}]}
+          - {stage: move, actor: USSR, options: [{id: oil_concession_deal, kind: deal}, {id: stand_firm, kind: hold}, {id: back_azerbaijan, kind: escalate}]}
+          - {stage: respond, actor: USA}
+          - {stage: move, actor: USA, options: [{id: acquiesce, kind: concede}, {id: hold_firm, kind: hold}]}
+          - {stage: accident, per_rung: 0.03}
+        final_outcome: compromise
+      bindings:
+        - {at: script.0.roles.USSR.p_high_resolve, base: 0.1, terms: {powers.USSR.hawkishness: 0.3}, clamp: [0.05, 0.9]}
+        - {at: roles.USA.values.b_prevails, base: 0.5, terms: {powers.USA.credibility: 0.8}, clamp: [0.3, 2.0]}
+      historical:
+        choices: {USSR: [keep_troops, oil_concession_deal], USA: [security_council, accept], UK: [press_moscow]}
+        chance: [low, calm]
+        outcome: compromise
+    outcomes:
+      a_prevails:
+        narrative: Azerbaijan becomes a Soviet client; Iran slips toward Moscow.
+        effects: [{shift_influence: {region: persian_gulf, toward: USSR, amount: 0.25}}, {flag: soviet_client_azerbaijan}, {add: {path: powers.USA.credibility, value: -0.1}}, {unflag: soviet_troops_in_iran}]
+      b_prevails:
+        narrative: Under Western pressure the Red Army leaves Iran empty-handed.
+        effects: [{shift_influence: {region: persian_gulf, toward: USA, amount: 0.15}}, {add: {path: powers.USA.credibility, value: 0.05}}, {add: {path: powers.USSR.prestige, value: -0.05}}, {unflag: soviet_troops_in_iran}]
+      compromise:
+        narrative: Soviet troops withdraw in exchange for a promised oil concession.
+        effects: [{shift_influence: {region: persian_gulf, toward: USA, amount: 0.1}}, {unflag: soviet_troops_in_iran}]
+      limited_war:
+        narrative: Fighting breaks out in northern Iran.
+        effects: [{tension: 0.2}, {add: {path: regions.persian_gulf.stability, value: -0.2}}, {relations: {a: USA, b: USSR, add: -0.3}}, {unflag: soviet_troops_in_iran}]
+      nuclear_war:
+        effects: [{end_campaign: nuclear_war}]
+
+  - id: greek_civil_war
+    kind: major
+    title: The Greek Civil War
+    window: {earliest: 1946-Q2, latest: 1947-Q4}
+    historical_date: 1946-Q2
+    when: {flag: greece_unstable}
+    model:
+      family: attrition
+      tier: 2
+      cadence: annual
+      region: mediterranean
+      config:
+        sponsors:
+          UK: {side: a, capacity: 0.6, values: {a_victory: 1.0, b_victory: -1.5, partition: -0.3, a_withdrew: -1.0, b_withdrew: 1.0, stalemate: -0.2}}
+          USA: {side: a, capacity: 1.0, values: {a_victory: 1.5, b_victory: -2.0, partition: -0.3, a_withdrew: -1.5, b_withdrew: 1.5, stalemate: -0.2}}
+          USSR: {side: b, capacity: 0.5, values: {a_victory: -1.0, b_victory: 1.5, partition: 0.3, a_withdrew: 1.5, b_withdrew: -0.8, stalemate: 0.0}}
+        leads: {a: USA, b: USSR}
+        local_strength: {a: 1.0, b: 0.9}
+        initial_control: 0.55
+        step: 0.05
+        victory_threshold: 0.8
+        max_rounds: 20
+      bindings:
+        - {at: local_strength.b, base: 0.6, terms: {regions.mediterranean.influence.USSR: 2.0}, clamp: [0.3, 2.0]}
+      historical:
+        choices: {UK: [high, withdraw], USA: [low, high*3], USSR: [low, low, low, withdraw]}
+        chance: [a_gains/b_gains*7, a_gains]
+        outcome: b_withdrew
+    outcomes:
+      a_victory: {narrative: "The Greek government defeats the insurgency.", effects: [{shift_influence: {region: mediterranean, toward: USA, amount: 0.2}}, {flag: greece_secured}, {unflag: greece_unstable}]}
+      b_withdrew: {narrative: "Cut off from outside support, the Democratic Army collapses.", effects: [{shift_influence: {region: mediterranean, toward: USA, amount: 0.2}}, {flag: greece_secured}, {unflag: greece_unstable}]}
+      b_victory: {narrative: "Greece falls to the Communists.", effects: [{shift_influence: {region: mediterranean, toward: USSR, amount: 0.35}}, {flag: greece_communist}, {unflag: greece_unstable}, {add: {path: powers.USA.credibility, value: -0.1}}]}
+      a_withdrew: {narrative: "Abandoned by its patrons, Athens falls.", effects: [{shift_influence: {region: mediterranean, toward: USSR, amount: 0.35}}, {flag: greece_communist}, {unflag: greece_unstable}]}
+      partition: {narrative: "Greece is divided by a negotiated line.", effects: [{flag: greece_divided}, {unflag: greece_unstable}]}
+      stalemate: {narrative: "The insurgency smoulders on unresolved.", effects: [{flag: greece_divided}]}
+
+  # Re-reviewed 2026-10-14 under the five-point standard (EXPERIMENTS.md E40): a war of
+  # attrition that bargains while fighting, between the Communists (the PRC agent) and
+  # Chiang's Nationalists (computer-run), with Moscow and Washington as backers. Sources:
+  # Westad, Decisive Encounters (2003); Pepper, Civil War in China (1978); Tanner, The Battle
+  # for Manchuria (2013); Tsou, America's Failure in China (1963). Sizes are placeholders.
+  - id: chinese_civil_war
+    kind: major
+    title: The Chinese Civil War
+    window: {earliest: 1946-Q3, latest: 1947-Q4}
+    historical_date: 1946-Q3
+    model:
+      family: attrition
+      tier: 1
+      payoffs: derived
+      # The Nationalists value outcomes by their own goal row (user decision 2026-10-14,
+      # E40): by the share of China they would govern, priced at their goal score ruling
+      # all of it after a victory. A stalemate leaves the even split its effects encode
+      identities: {KMT: {identity: ROC, stalemate_share: 0.5}}
+      cadence: quarterly
+      region: china_mainland
+      config:
+        sponsors:
+          PRC: {side: a, capacity: 1.2, direct: true, values: {a_victory: 5.0, b_victory: -5.0, partition: 1.0, a_withdrew: -5.0, b_withdrew: 5.0, stalemate: 0.5}}
+          USSR: {side: a, capacity: 0.4, values: {a_victory: 1.5, b_victory: -1.0, partition: 0.5, a_withdrew: -1.0, b_withdrew: 1.5, stalemate: 0.2}}
+          # Chiang's Nationalists (computer-run; user decision 2026-10-14). They decided
+          # whether to fight or settle. Chiang's aim was to eliminate the Communists ("a
+          # disease of the heart", the Japanese only "of the skin"); a Communist army and
+          # state in the north were unacceptable, and he broke the 1946 truces. Their values
+          # are derived (model.identities); the hand values below are the earlier
+          # placeholders, kept for comparison. The army is local strength B
+          KMT: {side: b, capacity: 0.0, cost_scale: 0.2, values: {a_victory: -5.0, b_victory: 3.0, partition: 0.0, a_withdrew: 3.0, b_withdrew: -5.0, stalemate: -0.5}, settlement: {base: -7.0, per_share: 10.0}}
+          # Washington backs the Nationalists with aid. Truman ruled out sending troops: the
+          # army had demobilized, Europe came first, and Marshall told Congress (February
+          # 1948) that saving Chiang would be "an enormous commitment for an indefinite
+          # time". Intervention stays possible at a heavy price per quarter (user decision
+          # 2026-10-14, E40; sized so it is rare: 9% of 1946 runs with the historical types)
+          USA: {side: b, capacity: 0.8, direct: true, direct_cost: 0.75, values: {a_victory: -2.0, b_victory: 2.0, partition: 0.3, a_withdrew: 2.0, b_withdrew: -1.5, stalemate: 0.0}}
+        leads: {a: PRC, b: KMT}
+        # The Nationalists were the stronger side in 1946: about 4.3 million troops, with US
+        # equipment and an air force, against 1.2-1.3 million Communists (Westad). Local
+        # strength B is bound to the Nationalists' economy below
+        local_strength: {a: 1.0, b: 6.5}
+        # Battles follow Lanchester's square law (1916; user decision 2026-10-14, E40): with
+        # aimed fire, strength grows with the square of numbers, so unequal forces decide
+        # battles. The war moved from mobile warfare (1946-47) to massed campaigns
+        # (Liaoshen, Huaihai, Pingjin, 1948-49), which the Nationalists all lost
+        gamma: 2.0
+        initial_control: 0.35
+        step: 0.05
+        victory_threshold: 0.85
+        max_rounds: 28
+        weariness: {high: 0.0, direct: 0.0}
+        # The balance turned through defeats and defections: about 1.8 million Nationalist
+        # soldiers joined the PLA, which grew to about 4 million by 1949 while the
+        # Nationalists fell to about 1.5 million (user decision 2026-10-14; placeholder)
+        momentum: 0.04
+        # Talks while fighting (user decision 2026-10-14): Marshall's mediation ran through
+        # 1946; the Communists' eight points (January 1949) and Li Zongren's Yangtze bid (the
+        # Beiping talks, April 1949) failed. A settlement is a line: the Communist share
+        offers:
+          grid: [0.3, 0.4, 0.5, 0.6, 0.7]
+          proposer: alternate
+          opens: 0
+        # Hidden strength and cohesion, with each side's own beliefs (user decisions
+        # 2026-10-14). Chiang underrated the Communists ("bandits"; Chen Cheng promised
+        # victory in three to six months). The Nationalist armies proved brittle, which no
+        # one could see in 1946: Chiang believed them solid; Mao was sure they would crumble
+        # ("all reactionaries are paper tigers", to Anna Louise Strong, August 1946), though
+        # slowly (about five years from July 1946 by his September 1948 estimate; the pace
+        # is set by the strengths and momentum). Cohesion is seen by no side and learned
+        # from the battles (unseen; own_belief is the Nationalists' prior)
+        types:
+          a:
+            levels:
+              strong: {weight: 0.7, belief: 0.2, strength: 1.3}
+              weak: {weight: 0.3, belief: 0.8, strength: 0.8}
+          b:
+            unseen: true
+            levels:
+              solid: {weight: 0.3, belief: 0.3, own_belief: 0.9, strength: 1.2}
+              brittle: {weight: 0.7, belief: 0.7, own_belief: 0.1, strength: 0.8}
+      bindings:
+        - {at: sponsors.USA.capacity, base: 0.4, terms: {powers.USA.economy: 0.4}, clamp: [0.2, 1.5]}
+        # The Nationalists' strength follows their economy and governance (hyperinflation,
+        # corruption): mainland stability 0.35 in 1946 gives 6.5
+        - {at: local_strength.b, base: 2.0, terms: {regions.china_mainland.stability: 13.0}, clamp: [2.0, 8.0]}
+        # The Communists' forces, and Soviet help in Manchuria (Japanese arms handed over by
+        # the Soviet occupation, 1945-46)
+        - {at: sponsors.PRC.capacity, base: 0.4, terms: {powers.PRC.conventional: 0.8}, clamp: [0.6, 2.0]}
+        - {at: sponsors.USSR.capacity, base: 0.1, terms: {regions.china_mainland.influence.USSR: 2.0}, clamp: [0.1, 1.0]}
+      historical:
+        # Quarterly from 1946-Q3. The Communists fight a strategic defence (high) into 1947,
+        # then go over to the offensive (direct) from mid-1947; Moscow and Washington give
+        # limited aid. The Communists' eight points (January 1949) demanded surrender (the
+        # punishment of "war criminals", the constitution abolished, every Nationalist army
+        # reorganized), not a line, so they offer none; in 1949-Q2 they reject the
+        # Nationalists' Yangtze line (0.6), and the PLA crosses the Yangtze
+        choices:
+          PRC: [no_offer, high, high, no_offer, high, high, no_offer, direct, direct, no_offer, direct, direct, no_offer, direct, direct, no_offer, direct, reject, direct, no_offer, direct, direct]
+          KMT: [low, no_offer, low, low, no_offer, low, low, no_offer, low, low, no_offer, low, low, no_offer, low, low, offer_060, low, low, no_offer, low]
+          USSR: [low*14]
+          USA: [low*14]
+        chance: [strong, brittle, b_gains*2, a_gains*12]
+        outcome: a_victory
+    outcomes:
+      a_victory: {narrative: "The People's Liberation Army sweeps south; the Nationalists flee to Taiwan.", effects: [{flag: ccp_victory}]}
+      b_withdrew: {narrative: "The Nationalist armies disintegrate; the government flees to Taiwan.", effects: [{flag: ccp_victory}]}
+      b_victory: {narrative: "The Nationalists crush the Communist armies.", effects: [{flag: kmt_victory}]}
+      a_withdrew: {narrative: "The Communist movement abandons the armed struggle.", effects: [{flag: kmt_victory}]}
+      # The line sets each side's hold on the mainland (user decision 2026-10-14): at an even
+      # split, as before, Communist +0.2 and the US-backed south +0.25
+      partition: {narrative: "A truce divides China along the line of contact.", effects: [{flag: china_truce}, {shift_influence: {region: china_mainland, toward: PRC, amount: 0.4, scale_by: share}}, {shift_influence: {region: china_mainland, toward: USA, amount: 0.5, scale_by: {metric: share, invert: true}}}]}
+      stalemate: {narrative: "The civil war ends in exhaustion and division.", effects: [{flag: china_truce}, {shift_influence: {region: china_mainland, toward: PRC, amount: 0.2}}, {shift_influence: {region: china_mainland, toward: USA, amount: 0.25}}]}
+    tags:
+      # Abandoning an ally in its war (user decision 2026-10-14, E40; placeholder size, as in
+      # Korea): Washington kept aiding the Nationalists to the end (the China Aid Act, April
+      # 1948), pressed by the China lobby in Congress
+      "USA:withdrew": {effects: [{add: {path: powers.USA.credibility, value: -0.1}}]}
+
+  - id: indochina_war
+    kind: major
+    title: The First Indochina War
+    window: {earliest: 1946-Q4, latest: 1948-Q4}
+    historical_date: 1946-Q4
+    when: {all: [{flag: french_return_to_indochina}, {regime: {power: PRC, in: [ccp]}}]}
+    model:
+      family: attrition
+      tier: 2
+      cadence: annual
+      region: indochina
+      config:
+        sponsors:
+          FRA: {side: a, capacity: 1.0, direct: true, values: {a_victory: 2.0, b_victory: -2.5, partition: -0.5, a_withdrew: -2.0, b_withdrew: 2.0, stalemate: -0.5}}
+          USA: {side: a, capacity: 0.5, values: {a_victory: 1.0, b_victory: -1.0, partition: -0.2, a_withdrew: -0.8, b_withdrew: 1.0, stalemate: 0.0}}
+          PRC: {side: b, capacity: 0.6, values: {a_victory: -1.0, b_victory: 1.5, partition: 0.5, a_withdrew: 1.5, b_withdrew: -1.0, stalemate: 0.0}}
+          USSR: {side: b, capacity: 0.3, values: {a_victory: -0.5, b_victory: 1.0, partition: 0.4, a_withdrew: 1.0, b_withdrew: -0.5, stalemate: 0.0}}
+        leads: {a: FRA, b: PRC}
+        local_strength: {a: 0.6, b: 1.0}
+        initial_control: 0.6
+        step: 0.04
+        victory_threshold: 0.8
+        max_rounds: 44
+        weariness: {high: 0.01, direct: 0.025}
+      historical:
+        choices: {FRA: [high*5, direct*3, negotiate], USA: [low*9], PRC: [low*4, high*4, negotiate], USSR: [low*9]}
+        chance: [a_gains/b_gains*12, b_gains*4]
+        outcome: partition
+    outcomes:
+      a_victory: {narrative: "France restores its rule over Indochina.", effects: [{shift_influence: {region: indochina, toward: FRA, amount: 0.25}}, {flag: indochina_french}]}
+      b_withdrew: {narrative: "Without foreign help the Viet Minh are contained.", effects: [{shift_influence: {region: indochina, toward: FRA, amount: 0.2}}, {flag: indochina_french}]}
+      b_victory: {narrative: "The Viet Minh drive France from Indochina.", effects: [{shift_influence: {region: indochina, toward: PRC, amount: 0.3}}, {flag: [vietnam_unified_communist, french_exit_indochina]}, {add: {path: powers.FRA.prestige, value: -0.15}}]}
+      a_withdrew: {narrative: "France abandons Indochina.", effects: [{shift_influence: {region: indochina, toward: PRC, amount: 0.3}}, {flag: [vietnam_unified_communist, french_exit_indochina]}, {add: {path: powers.FRA.prestige, value: -0.1}}]}
+      partition: {narrative: "Both sides agree to settle Indochina at a conference table.", effects: [{flag: indochina_partitioned}]}
+      stalemate: {narrative: "The war grinds to a halt along shifting lines.", effects: [{flag: indochina_partitioned}]}
+
+  - id: marshall_plan
+    kind: major
+    title: The Marshall Plan
+    window: {earliest: 1947-Q2, latest: 1948-Q2}
+    historical_date: 1947-Q2
+    when: {compare: {path: regions.western_europe.stability, op: lt, value: 0.65}}
+    narrative: Secretary Marshall offers American aid for European recovery.
+    # Reviewed 2026-10-10 (EXPERIMENTS.md E19); clients split 2026-10-11 (E21). Aid's effects in
+    # the world scale with the US offer level (metric commit:USA: none 0, aid 0.5, aid_guarantee
+    # 1): recipients' growth and stability. The plan (~$13.3B in 1948-51, about 5% of one year's
+    # US GDP) was a one-off transfer of wealth, not a permanent cut in output, so it is not an
+    # economy-level effect. Its cost to the US lives in the offer cost until the game has a
+    # stock of wealth or debt (GOALS.md section 15).
+    model:
+      family: alignment
+      tier: 1
+      payoffs: derived
+      region: western_europe
+      config:
+        patrons:
+          # Offer values and costs stay game parameters (derived payoffs value choices, not
+          # offers). They match the same anchors at kappa 100: the full plan costs the US about
+          # 0.55 in goal units (paid per aligned client), and is worth about 1.2 to Britain or France.
+          # Gains and losses below are hand-set fallbacks; derived payoffs replace them.
+          USA:
+            offer_value: {none: 0.0, aid: 0.8, aid_guarantee: 1.2}
+            offer_cost: {none: 0.0, aid: 0.15, aid_guarantee: 0.3}
+            gain: {UK: 1.0, FRA: 1.5, ITA: 1.0, WSMALL: 0.8, CZE: 0.5, EAST: 1.0}
+            loss: {ITA: 0.5, WSMALL: 0.3, CZE: 0.2, EAST: 0.3}
+          USSR:
+            offer_value: {none: 0.0, aid: 0.3, aid_guarantee: 0.6}
+            offer_cost: {none: 0.0, aid: 0.1, aid_guarantee: 0.2}
+            gain: {EAST: 1.5, CZE: 0.6, FRA: 0.8, ITA: 1.0, WSMALL: 0.5}
+            loss: {UK: 0.2, FRA: 0.6, ITA: 0.5, WSMALL: 0.3, CZE: 0.5, EAST: 1.0}
+            # Stalin can forbid the countries he controls to take American aid (as on
+            # 9 July 1947). A client that defies the order loses this from aligning with the US.
+            # The East (Soviet troops): 2.0, more than the full US offer (1.2), so defiance is
+            # about 1 in 100. Czechoslovakia: 1.2 (user decision 2026-10-11), because Prague had
+            # no Soviet troops and Yugoslavia defied Stalin a year later: about 1 in 7 defies when
+            # the US offers aid. The cost of forbidding is derived from the "USSR:forbade" tag
+            # and its follow-ons (Eastern stagnation); 0.1 is the fallback.
+            control: {CZE: 1.2, EAST: 2.0}
+            forbid_cost: 0.1
+        # Computer-run clients choose by a logit over pull + offer value (temperature 0.4).
+        # Pulls are anchored on 1945-47 elections (Nohlen and Stover, Elections in Europe, 2010):
+        # with no offers, a client's odds of US : USSR : non-aligned match its vote for
+        # pro-Western : communist-led : other parties, so pull = 0.2 + 0.4 ln(share / non-aligned
+        # share) with non-aligned at 0.2. Soviet troops and police add a coercion term.
+        clients:
+          UK: {mode: player, affinity: {USA: 0.6, USSR: -0.8}, nonaligned: 0.3}
+          FRA: {mode: player, affinity: {USA: 0.4, USSR: -0.2}, nonaligned: 0.4}
+          # Italy, 1946: anti-communist parties 54.5%, Popular Front (PCI + PSIUP) 39.6%, other
+          # 5.9%. The real swing. Its tilt follows Mediterranean stability (its region), +-1 per
+          # unit around the 1947 value (0.473).
+          ITA: {mode: chance, affinity: {USA: 1.09, USSR: 0.96}, nonaligned: 0.2, temperature: 0.4}
+          # Benelux, Scandinavia, Austria, 1944-46: communists 10.4% (population-weighted),
+          # neutral Sweden 16%, the rest 73.6%. Tilt follows Western European stability.
+          WSMALL: {mode: chance, affinity: {USA: 0.81, USSR: 0.03}, nonaligned: 0.2, temperature: 0.4}
+          # Czechoslovakia, 1946: communists 38%, democratic parties 48%, Social Democrats and
+          # others 14%; no Soviet troops since December 1945; the cabinet accepted the invitation
+          # unanimously on 7 July 1947. Soviet coercion adds 0.6 x Soviet influence in Eastern
+          # Europe (half the slope of the Soviet-held East: no troops).
+          CZE: {mode: chance, affinity: {USA: 0.69, USSR: 0.94}, nonaligned: 0.2, temperature: 0.4}
+          # Poland, Hungary, Romania, Bulgaria: Soviet troops and communist-run police; the choice
+          # was Stalin's. Pull = 2.0 x Soviet influence in Eastern Europe (coercion), US 0.1.
+          EAST: {mode: chance, affinity: {USA: 0.1, USSR: 1.14}, nonaligned: 0.0, temperature: 0.4}
+      bindings:
+        - {at: clients.ITA.affinity.USA, base: 0.617, terms: {regions.mediterranean.stability: 1.0}, clamp: [-1.0, 2.0]}
+        - {at: clients.ITA.affinity.USSR, base: 1.435, terms: {regions.mediterranean.stability: -1.0}, clamp: [-1.0, 2.0]}
+        - {at: clients.WSMALL.affinity.USA, base: 0.301, terms: {regions.western_europe.stability: 1.0}, clamp: [-1.0, 2.0]}
+        - {at: clients.WSMALL.affinity.USSR, base: 0.537, terms: {regions.western_europe.stability: -1.0}, clamp: [-1.0, 2.0]}
+        - {at: clients.CZE.affinity.USSR, base: 0.599, terms: {regions.eastern_europe.influence.USSR: 0.6}, clamp: [-1.0, 2.0]}
+        - {at: clients.EAST.affinity.USSR, base: 0.0, terms: {regions.eastern_europe.influence.USSR: 2.0}, clamp: [-1.0, 2.0]}
+      historical:
+        choices: {USA: [aid_guarantee], USSR: [aid_guarantee, forbid], UK: [aligned_USA], FRA: [aligned_USA]}
+        chance: [aligned_USA, aligned_USA, aligned_USSR, aligned_USSR]
+        outcome: aligned_USA
+    outcomes:
+      aligned_USA:
+        narrative: Western Europe accepts Marshall aid; recovery begins.
+        effects:
+          - flag: marshall_plan_accepted
+          - shift_influence: {region: western_europe, toward: USA, amount: 0.1}
+          # the western zones of Germany took part through the occupying powers
+          - shift_influence: {region: germany, toward: USA, amount: 0.05}
+          - add: {path: powers.UK.growth, value: 0.005, scale_by: "commit:USA"}
+          - add: {path: regions.western_europe.stability, value: 0.15, scale_by: "commit:USA"}
+      # Switching blocs costs relations with the US like the Berlin clash between the
+      # superpowers (-0.4); staying out of both costs what a veto does in Berlin (-0.1).
+      # Without these, Britain's derived pull toward the US was only +0.24 and a Soviet aid
+      # offer (0.3) could outweigh it (EXPERIMENTS.md E24).
+      aligned_USSR:
+        narrative: Britain turns away from American aid and toward Moscow.
+        effects:
+          - shift_influence: {region: western_europe, toward: USSR, amount: 0.05}
+          - relations: {a: UK, b: USA, add: -0.4}
+          - relations: {a: UK, b: USSR, add: 0.2}
+      nonaligned:
+        narrative: Britain keeps its distance from both blocs.
+        effects:
+          - add: {path: regions.western_europe.stability, value: -0.05}
+          - relations: {a: UK, b: USA, add: -0.1}
+    tags:
+      "FRA:aligned_USA":
+        effects:
+          - flag: france_in_marshall_plan
+          - shift_influence: {region: western_europe, toward: USA, amount: 0.05}
+          - add: {path: powers.FRA.growth, value: 0.005, scale_by: "commit:USA"}
+          - add: {path: powers.FRA.stability, value: 0.05, scale_by: "commit:USA"}
+      "FRA:aligned_USSR":
+        effects:
+          - flag: france_neutralist
+          - shift_influence: {region: western_europe, toward: USSR, amount: 0.1}
+          - relations: {a: FRA, b: USA, add: -0.4}
+          - relations: {a: FRA, b: USSR, add: 0.2}
+      "FRA:nonaligned": {effects: [{relations: {a: FRA, b: USA, add: -0.1}}]}
+      # Each client moves its share of what the old single clients moved, by Marshall aid share
+      # (Italy 11.4%, Benelux 12.5%, Austria 5.0%, Scandinavia 4.8%; 1948-52) or, in the East,
+      # by population (Czechoslovakia about 18% of the region).
+      "ITA:aligned_USA":
+        effects:
+          - flag: italy_in_marshall_plan
+          - shift_influence: {region: mediterranean, toward: USA, amount: 0.1}
+          - add: {path: regions.mediterranean.stability, value: 0.05, scale_by: "commit:USA"}
+      "ITA:aligned_USSR":
+        effects:
+          - flag: italy_popular_front
+          - shift_influence: {region: mediterranean, toward: USSR, amount: 0.15}
+          - add: {path: regions.mediterranean.stability, value: -0.05}
+      "WSMALL:aligned_USA":
+        effects:
+          - flag: western_europe_in_marshall_plan
+          - shift_influence: {region: western_europe, toward: USA, amount: 0.06}
+          - add: {path: regions.western_europe.stability, value: 0.05, scale_by: "commit:USA"}
+      "WSMALL:aligned_USSR":
+        effects:
+          - flag: western_europe_communist_surge
+          - shift_influence: {region: western_europe, toward: USSR, amount: 0.1}
+          - add: {path: regions.western_europe.stability, value: -0.05}
+      "CZE:aligned_USA": {effects: [{flag: eastern_marshall}, {shift_influence: {region: eastern_europe, toward: USA, amount: 0.03}}]}
+      "CZE:aligned_USSR": {effects: [{shift_influence: {region: eastern_europe, toward: USSR, amount: 0.02}}]}
+      "EAST:aligned_USA": {effects: [{flag: eastern_marshall}, {shift_influence: {region: eastern_europe, toward: USA, amount: 0.12}}]}
+      "EAST:aligned_USSR": {effects: [{flag: molotov_plan}, {shift_influence: {region: eastern_europe, toward: USSR, amount: 0.08}}]}
+      # Forbidding: the East forgoes Western aid (slower recovery, resentment). The order was
+      # private (Prague and Warsaw were told in Moscow), so it carries no US-relations cost of
+      # its own: the public break is in the Czechoslovak coup and the Cominform, which have
+      # their own effects (user decision 2026-10-11; EXPERIMENTS.md E23).
+      "USSR:forbade":
+        effects:
+          - flag: eastern_participation_forbidden
+          - add: {path: regions.eastern_europe.stability, value: -0.05}
+          - tension: 0.02
+
+  - id: malayan_emergency
+    kind: major
+    title: The Malayan Emergency
+    window: {earliest: 1948-Q2, latest: 1950-Q4}
+    historical_date: 1948-Q2
+    when: {all: [{flag: uk_colonial_southeast_asia}, {regime: {power: PRC, in: [ccp]}}]}
+    model:
+      family: attrition
+      tier: 2
+      cadence: annual
+      region: southeast_asia
+      config:
+        sponsors:
+          UK: {side: a, capacity: 0.8, direct: true, values: {a_victory: 1.5, b_victory: -1.5, partition: -0.5, a_withdrew: -1.0, b_withdrew: 1.5, stalemate: -0.2}}
+          PRC: {side: b, capacity: 0.3, values: {a_victory: -0.5, b_victory: 1.0, partition: 0.3, a_withdrew: 1.0, b_withdrew: -0.3, stalemate: 0.0}}
+        leads: {a: UK, b: PRC}
+        local_strength: {a: 1.0, b: 0.7}
+        initial_control: 0.6
+        step: 0.04
+        victory_threshold: 0.8
+        max_rounds: 48
+        weariness: {high: 0.005, direct: 0.015}
+      historical:
+        choices: {UK: [high*3, direct*4, high*3], PRC: [low*10]}
+        chance: [a_gains/b_gains*16, a_gains*5]
+        outcome: a_victory
+    outcomes:
+      a_victory: {narrative: "The insurgency is defeated; Malaya moves to independence within the Commonwealth.", effects: [{shift_influence: {region: southeast_asia, toward: UK, amount: 0.1}}, {flag: malaya_secured}]}
+      b_withdrew: {narrative: "Starved of support, the insurgents fade into the jungle.", effects: [{shift_influence: {region: southeast_asia, toward: UK, amount: 0.1}}, {flag: malaya_secured}]}
+      b_victory: {narrative: "Communist insurgents take Malaya.", effects: [{shift_influence: {region: southeast_asia, toward: PRC, amount: 0.25}}, {flag: malaya_communist}]}
+      a_withdrew: {narrative: "Britain abandons Malaya to the insurgency.", effects: [{shift_influence: {region: southeast_asia, toward: PRC, amount: 0.2}}, {flag: malaya_communist}, {add: {path: powers.UK.prestige, value: -0.05}}]}
+      partition: {narrative: "A negotiated settlement leaves the insurgents a foothold.", effects: [{flag: malaya_settlement}]}
+      stalemate: {narrative: "The Emergency drags on without resolution.", effects: [{flag: malaya_settlement}]}
+
+  - id: berlin_blockade
+    kind: major
+    title: The Berlin Blockade
+    window: {earliest: 1948-Q1, latest: 1949-Q4}
+    historical_date: 1948-Q2
+    when:
+      all:
+        - flag: [western_zones_merged, berlin_four_power]
+    narrative: The Soviet Union blockades the western sectors of Berlin; the airlift begins.
+    # Reviewed 2026-10-11 (EXPERIMENTS.md E20-E21). A hold-out: reviewed, never tuned to history.
+    # Bargaining while fighting, with hidden resolve on both sides. Each quarter the West names
+    # terms (share = the West's share: 1 keeps Berlin and the West German programme) and the
+    # USSR keeps the blockade or lifts it on them: the West bargains, the USSR endures. Between
+    # quarters the airlift and the blockade contest the city's supply. The contest is public
+    # (tonnage was reported daily) but random: nobody knew whether the airlift would last the
+    # winter. Each side's per-quarter cost of carrying on is private: the West's airlift cost and
+    # political risk (the November 1948 election, British austerity); Stalin's cost of the
+    # blockade and of the Western counter-blockade. The West did not know Stalin's aims or
+    # resolve (Shlaim 1983; Harrington 2012); Stalin expected the West to give way (Narinsky 1996).
+    model:
+      family: bargaining
+      tier: 1
+      holdout: true
+      payoffs: derived
+      cadence: quarterly
+      region: germany
+      config:
+        roles: {A: USA, B: USSR}
+        grid: [0.0, 0.25, 0.5, 0.75, 1.0]
+        horizon: 5
+        proposers: A
+        surplus: 2.0
+        # Outcome values below are hand-set fallbacks; derived payoffs replace them.
+        sides:
+          A: {discount: 0.95, breakdown_value: -4.0, impasse_value: 1.2, commitment: 0.75, commitment_cost: 0.8}
+          B: {discount: 0.9, breakdown_value: -4.0, impasse_value: 0.2}
+        breakdown: {base: 0.02, growth: 0.01, max: 0.1}
+        consent:
+          - {role: UK, base: -0.2, per_share: 1.0, veto_value: 0.0}
+          - {role: FRA, base: -0.3, per_share: 1.0, veto_value: 0.0}
+        # PLACEHOLDERS, swept in E21: priors 0.5 (maximal uncertainty, not fitted); per-quarter
+        # costs spread around the old common values (US 0.08, USSR 0.10).
+        types:
+          A: {prior: {strong: 0.5, weak: 0.5}, delay_cost: {strong: 0.04, weak: 0.16}}
+          B: {prior: {strong: 0.5, weak: 0.5}, delay_cost: {strong: 0.05, weak: 0.20}}
+        # PLACEHOLDER, swept: the West's position gains a quarter with probability 0.6. Anchor
+        # (Miller 2000): about 2,000-2,500 t/day in July 1948 against about 4,500 needed; about
+        # the need by autumn; a winter dip; about 8,000 by spring 1949. Four net gains (or losses)
+        # from the middle end the standoff: the blockade (or the city) gives out.
+        contest: {initial: 0.5, step: 0.125, win_probability: 0.6}
+      # Standing scoreboard: the airlift outlasting the blockade is a Western win.
+      results: {impasse: {USA: 1.0, USSR: 0.0}}
+      historical:
+        # The US commits ("we stay"). Its terms: lift the blockade first (July 1948 notes); the
+        # 30 August Moscow directive (Soviet mark in Berlin under four-power control); the UN
+        # neutral states' currency plan (late 1948); the Jessup-Malik terms (lift both blockades,
+        # then a Council of Foreign Ministers), accepted in May 1949. The types are a reading of
+        # the record (both sides held on for eleven months), not a measurement.
+        choices: {USA: [commit, offer_100, offer_075, offer_075, offer_100, offer_100], USSR: [reject, reject, reject, reject, accept], UK: [ratify], FRA: [ratify]}
+        chance: [strong, strong, talks_continue, a_gains, talks_continue, b_gains, talks_continue, a_gains, talks_continue, a_gains]
+        outcome: agreement
+    outcomes:
+      agreement:
+        narrative: The blockade is lifted on terms that settle Berlin's status.
+        # The Western gain is shared by the three western occupiers in proportion to their
+        # influence in Germany in 1948 (0.286 : 0.142 : 0.095), not handed to the US alone.
+        effects:
+          - shift_influence: {region: germany, toward: USA, amount: 0.14, scale_by: share}
+          - shift_influence: {region: germany, toward: UK, amount: 0.07, scale_by: share}
+          - shift_influence: {region: germany, toward: FRA, amount: 0.05, scale_by: share}
+          - shift_influence: {region: germany, toward: USSR, amount: 0.25, scale_by: {metric: share, invert: true}}
+          - add: {path: powers.USA.credibility, value: 0.1, scale_by: share}
+          - flag: berlin_settled
+          - tension: -0.05
+      breakdown:
+        narrative: An armed convoy meets Soviet forces; shots are fired around Berlin.
+        effects: [{tension: 0.4}, {relations: {a: USA, b: USSR, add: -0.4}}, {add: {path: powers.USA.conventional, value: -0.5}}, {add: {path: powers.USSR.conventional, value: -0.5}}, {add: {path: regions.germany.stability, value: -0.3}}, {flag: berlin_clash}]
+      impasse:
+        narrative: The airlift outlasts the blockade; West Berlin holds.
+        effects:
+          - shift_influence: {region: germany, toward: USA, amount: 0.05}
+          - shift_influence: {region: germany, toward: UK, amount: 0.03}
+          - shift_influence: {region: germany, toward: FRA, amount: 0.02}
+          - flag: [berlin_settled, berlin_airlift_success]
+      vetoed:
+        narrative: The allies reject the proposed settlement; the airlift goes on.
+        effects: [{flag: berlin_settled}]
+    tags:
+      # the veto's cost falls on whoever vetoed
+      "UK:vetoed": {effects: [{relations: {a: USA, b: UK, add: -0.1}}]}
+      "FRA:vetoed": {effects: [{relations: {a: USA, b: FRA, add: -0.1}}]}
+      "USA:broke_commitment": {effects: [{add: {path: powers.USA.credibility, value: -0.15}}]}
