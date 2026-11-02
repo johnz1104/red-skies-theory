@@ -1,0 +1,9 @@
+# Runtime dependencies for training on a cloud VM (versions as tested locally, 2026-10-29).
+# torch comes from the CPU index (setup_vm.sh, Dockerfile); its pin here then holds.
+# The public engine needs only numpy; the campaign adds PyYAML and jsonschema; RL adds the rest.
+numpy==1.26.4
+PyYAML==6.0.3
+jsonschema==4.26.0
+torch==2.14.1
+pettingzoo==1.27.0
+gymnasium==1.4.0
