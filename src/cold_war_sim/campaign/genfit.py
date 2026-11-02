@@ -6,8 +6,19 @@ events count by family (``generator.yaml`` ``named``) toward the same targets (d
 Each round scales a fitted template's ``rate`` toward its total, then its group and decade
 factors toward their marginals (iterative proportional fitting of the generated part:
 the target less what named crises already supply), damped by ``power`` (0.5: a square
-root, safe with few campaigns; 1: a full step). Templates
-without data (alignment contests, settlements) keep their judgment rates.
+root, safe with few campaigns; 1: a full step). Templates without data (alignment contests,
+settlements) keep their judgment rates.
+
+The fit reads exposure (E51): the castable, unblocked region-quarters each group and decade
+offers (``generator.count_exposure``), since a crisis can start only where a hostile rival
+can be cast.
+
+* **The floor:** every level keeps at least ``FLOOR`` times the data's average crises per
+  castable region-quarter, times its own exposure, even where the data have none or named
+  crises already supply them, so generated crises can stand in where a named one does not
+  fire (decision 16). Over a margin the floors add at most ``FLOOR`` times the data's total.
+* **No exposure:** a level with under ``MIN_EXPOSURE`` castable region-quarters a campaign
+  keeps its factor, which would otherwise grow without effect.
 """
 
 from __future__ import annotations
@@ -16,7 +27,7 @@ import copy
 from collections import Counter
 from collections.abc import Callable, Mapping
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from . import calendar, generator
@@ -25,7 +36,9 @@ from .engine import CampaignEngine, EngineConfig, run_episode
 from .policies import make_policy
 
 Cell = tuple[str, str, int]  # (template, group, decade)
-FLOOR = 0.25  # generated crises a margin keeps at least, so a factor never collapses to 0
+Exposure = Counter[tuple[str, int]]  # (group, decade) -> castable, unblocked region-quarters
+FLOOR = 0.25  # a level keeps this share of the data's crises per castable region-quarter
+MIN_EXPOSURE = 1.0  # castable region-quarters a campaign below which a factor is left alone
 
 
 @dataclass(frozen=True)
@@ -33,6 +46,7 @@ class Counts:
     named: Counter[Cell]
     generated: Counter[Cell]
     campaigns: int
+    exposure: Exposure = field(default_factory=Counter)  # summed over the campaigns
 
 
 def _cells(catalog: Catalog, engine: CampaignEngine) -> tuple[Counter[Cell], Counter[Cell]]:
@@ -75,22 +89,30 @@ def _init(generator_doc: Mapping[str, Any]) -> None:
     _WORKER["catalog"] = with_generator(load_catalog(), generator_doc)
 
 
-def _campaign(seed: int) -> tuple[Counter[Cell], Counter[Cell]]:
+def _campaign(seed: int) -> tuple[Counter[Cell], Counter[Cell], Exposure]:
     catalog: Catalog = _WORKER["catalog"]
     config = EngineConfig(agents=(), playable_tier=1, npc_policy="equilibrium", generator=True)
     engine = CampaignEngine(catalog, config)
-    run_episode(engine, make_policy("equilibrium"), seed)
-    return _cells(catalog, engine)
+    exposure: Exposure = Counter()
+    generator.count_exposure(exposure)
+    try:
+        run_episode(engine, make_policy("equilibrium"), seed)
+    finally:
+        generator.count_exposure(None)
+    named, generated = _cells(catalog, engine)
+    return named, generated, exposure
 
 
 def count(generator_doc: Mapping[str, Any], seeds: list[int], workers: int) -> Counts:
     named: Counter[Cell] = Counter()
     generated: Counter[Cell] = Counter()
+    exposure: Exposure = Counter()
     with ProcessPoolExecutor(workers, initializer=_init, initargs=(generator_doc,)) as pool:
-        for n, g in pool.map(_campaign, seeds):
+        for n, g, e in pool.map(_campaign, seeds):
             named.update(n)
             generated.update(g)
-    return Counts(named, generated, len(seeds))
+            exposure.update(e)
+    return Counts(named, generated, len(seeds), exposure)
 
 
 def _margin(counter: Counter[Cell], template: str, axis: int) -> Counter[Any]:
@@ -106,33 +128,44 @@ def update(doc: Mapping[str, Any], counts: Counts, power: float = 0.5) -> dict[s
 
     new = copy.deepcopy(dict(doc))
     per = 1.0 / counts.campaigns
+    exposed: dict[int, dict[Any, float]] = {1: {}, 2: {}}  # a campaign's, by group and decade
+    for (group, decade), n in counts.exposure.items():
+        exposed[1][group] = exposed[1].get(group, 0.0) + per * n
+        exposed[2][decade] = exposed[2].get(decade, 0.0) + per * n
+    total_exposure = sum(exposed[1].values())
     for template, target in doc["targets"].items():
         spec = new["templates"][template]
-        total_target = float(sum(target["decades"].values()))
-        named_total = per * sum(_margin(counts.named, template, 1).values())
         gen_total = per * sum(_margin(counts.generated, template, 1).values())
-        wanted = max(FLOOR, total_target - named_total)
-        spec["rate"] = float(spec["rate"]) * (wanted / max(gen_total, FLOOR)) ** power
+        total_target = float(sum(target["decades"].values()))
+        # the floor: a share of the data's crises per castable region-quarter
+        intensity = FLOOR * total_target / total_exposure if total_exposure else 0.0
+        wanted = per  # the generated total: the larger margin's sum of wants it can reach
         for axis, key, factors in ((1, "groups", "group_factor"), (2, "decades", "decade_factor")):
             named_m = _margin(counts.named, template, axis)
             gen_m = _margin(counts.generated, template, axis)
+            margin_total = 0.0
             for level, value in target[key].items():
                 level_key = int(level) if axis == 2 else level
-                share = float(value) / total_target if total_target else 0.0
-                want = max(FLOOR * share, share * total_target - per * named_m[level_key])
-                have = max(FLOOR * share, per * gen_m[level_key])
-                spec[factors][level] = (
-                    float(spec[factors][level]) * (max(want, 1e-3) / max(have, 1e-3)) ** power
-                )
+                exposure = exposed[axis].get(level_key, 0.0)
+                if exposure < MIN_EXPOSURE:
+                    continue  # nothing can start here, so its factor would grow without effect
+                want = max(intensity * exposure, float(value) - per * named_m[level_key])
+                margin_total += want
+                # a zero count reads as one crisis over the counted campaigns (its resolution),
+                # or as the want itself when that is finer than the resolution
+                have = max(per * gen_m[level_key], min(per, want))
+                spec[factors][level] = float(spec[factors][level]) * (want / have) ** power
+            wanted = max(wanted, margin_total)
             mean = sum(spec[factors].values()) / len(spec[factors])
             for level in spec[factors]:  # factors average 1; the rate carries the total
                 spec[factors][level] = round(spec[factors][level] / mean, 4)
-        spec["rate"] = round(spec["rate"], 6)
+        spec["rate"] = round(float(spec["rate"]) * (wanted / max(gen_total, per)) ** power, 6)
     return new
 
 
 def table(doc: Mapping[str, Any], counts: Counts) -> list[str]:
-    """Per template and margin: the data's count against named + generated per campaign."""
+    """Per template and margin: the data's count against named + generated per campaign,
+    with the generated part in brackets (the part ``FLOOR`` keeps above zero)."""
 
     per = 1.0 / counts.campaigns
     lines = []
@@ -153,7 +186,7 @@ def table(doc: Mapping[str, Any], counts: Counts) -> list[str]:
             for level, value in target[key].items():
                 level_key = int(level) if axis == 2 else level
                 s = per * (named_m[level_key] + gen_m[level_key])
-                parts.append(f"{level} {value}/{s:.1f}")
+                parts.append(f"{level} {value}/{s:.1f} [{per * gen_m[level_key]:.2f}]")
                 if axis == 1:
                     chi2 += (float(value) - s) ** 2 / max(float(value), 1.0)
             lines.append(f"  {key}: " + ", ".join(parts))
@@ -168,7 +201,10 @@ def fit(
     workers: int,
     progress: Callable[[str], None] = print,
     power: float = 0.5,
+    on_round: Callable[[int, dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
+    """*on_round* receives each round's updated document (a long fit keeps its progress)."""
+
     current = copy.deepcopy(dict(doc))
     for round_ in range(rounds):
         counts = count(current, seeds, workers)
@@ -176,6 +212,8 @@ def fit(
         for line in table(current, counts):
             progress(line)
         current = update(current, counts, power)
+        if on_round is not None:
+            on_round(round_ + 1, current)
     counts = count(current, seeds, workers)
     progress("== fitted")
     for line in table(current, counts):

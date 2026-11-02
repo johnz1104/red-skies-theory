@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import copy
+from collections import Counter
 from dataclasses import replace
 
 import pytest
 
-from cold_war_sim.campaign import calendar, generator
+from cold_war_sim.campaign import calendar, generator, genfit
 from cold_war_sim.campaign.catalog import Catalog, CatalogError, load_catalog
 from cold_war_sim.campaign.engine import CampaignEngine, EngineConfig, run_episode
 from cold_war_sim.campaign.policies import make_policy
@@ -96,6 +97,7 @@ def test_proposals_are_deterministic_and_respect_one_per_region(catalog: Catalog
     doc = copy.deepcopy(raw.generator)
     for spec in doc["templates"].values():
         spec["rate"] = 1.0  # every candidate fires
+    doc["hazard_cap"] = 1.0
     hot = replace(catalog, raw=replace(raw, generator=doc))
     world = hostile_world(catalog)
     first = generator.propose(hot, world, seed=7)
@@ -165,3 +167,50 @@ def test_an_agents_challenge_starts_a_standoff_it_leads(catalog: Catalog) -> Non
     run_episode(engine, {"USA": Challenger()}, 5)  # type: ignore[dict-item]
     started = [e for e in engine.world.fired if e.startswith("gen:standoff:")]
     assert any(generator.parse_id(e)[2][1] == "USA" for e in started), started
+
+
+def test_the_fit_keeps_a_floor_in_proportion_to_exposure() -> None:
+    # named crises supply Europe's data; Africa has none, yet generates one a campaign;
+    # South Asia has data but no castable region-quarter
+    doc = {
+        "targets": {
+            "uprising": {
+                "groups": {"europe": 4, "africa": 0, "south_asia": 1},
+                "decades": {1960: 5},
+            }
+        },
+        "templates": {
+            "uprising": {
+                "rate": 0.01,
+                "group_factor": {"europe": 1.0, "africa": 1.0, "south_asia": 1.0},
+                "decade_factor": {1960: 1.0},
+            }
+        },
+    }
+    counts = genfit.Counts(
+        named=Counter({("uprising", "europe", 1960): 40}),
+        generated=Counter({("uprising", "europe", 1960): 2, ("uprising", "africa", 1960): 10}),
+        campaigns=10,
+        exposure=Counter({("europe", 1960): 3000, ("africa", 1960): 1000}),
+    )
+    spec = genfit.update(doc, counts, power=1.0)["templates"]["uprising"]
+    factors = spec["group_factor"]
+    assert sum(factors.values()) / len(factors) == pytest.approx(1.0, abs=1e-3)
+    # the floor: a quarter of the data's 5 crises over 400 castable region-quarters, times
+    # each group's exposure: Europe wants 0.94 against 0.2 generated, Africa 0.31 against 1.0
+    ratio = (0.3125 / 1.0) / (0.9375 / 0.2)
+    assert factors["africa"] / factors["europe"] == pytest.approx(ratio, rel=1e-3)
+    # South Asia, which nothing can reach, keeps its factor (1, against Europe's x 4.69)
+    assert factors["south_asia"] / factors["europe"] == pytest.approx(0.2 / 0.9375, rel=1e-3)
+    # the total wanted is the reachable groups' 1.25 against 1.2 generated
+    assert spec["rate"] == pytest.approx(0.01 * 1.25 / 1.2, abs=1e-6)
+
+
+def test_the_hazard_has_a_ceiling(catalog: Catalog) -> None:
+    doc = copy.deepcopy(catalog.raw.generator)  # type: ignore[union-attr]
+    doc["templates"]["standoff"]["rate"] = 100.0
+    world = hostile_world(catalog)
+    roles = generator.cast(world, "germany")
+    assert roles is not None
+    x = generator.features(catalog, world, "germany", roles)
+    assert generator.hazard(doc, "standoff", "germany", world.quarter, x) == doc["hazard_cap"]

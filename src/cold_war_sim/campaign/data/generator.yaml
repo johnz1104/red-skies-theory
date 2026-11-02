@@ -2,7 +2,7 @@
 #
 # Crises arise where the world makes them likely, on five templates over the families. Each
 # quarter, for each template and region, a crisis starts with hazard
-#     h = rate x group_factor x decade_factor x exp(sum_k slope_k (x_k - reference_k))
+#     h = min(hazard_cap, rate x group_factor x decade_factor x exp(sum_k slope_k (x_k - reference_k)))
 # where the x_k are features of the region and the world (`features`). Roles are cast from
 # the world (`roles`): the region's leading power and its strongest rival. Payoffs are derived
 # from the goals and effects come from the shared contract (contract.yaml), so a generated
@@ -22,6 +22,11 @@
 # dataset; their rates are judgment.
 
 precedence_quarters: 4
+
+# a region's largest chance of a generated crisis of one template in a quarter (judgment:
+# about one a year). Factors multiply, so a busy decade and a busy group can push a cell the
+# fit rarely sees far past any rate in the data (E51).
+hazard_cap: 0.25
 
 # the model's regions in ICB's geographic groups (ICB GEOG, UN regions)
 groups:
@@ -62,9 +67,9 @@ features:
 templates:
   standoff:  # a coercive standoff: the rival challenges the region's leading power
     family: crisis
-    rate: 0.04294  # per region-quarter at the reference features (fitted, E49)
-    group_factor: {europe: 0.7121, middle_east: 0.7005, south_asia: 1.2787, east_asia: 0.6667, americas: 1.0286, africa: 1.6134}
-    decade_factor: {1940: 2.9223, 1950: 0.7625, 1960: 0.7513, 1970: 0.6444, 1980: 0.5883, 1990: 0.331}
+    rate: 0.245252  # per region-quarter at the reference features (fitted, E51)
+    group_factor: {europe: 0.7419, middle_east: 1.5071, south_asia: 1.2106, east_asia: 0.4116, americas: 0.8015, africa: 1.3274}
+    decade_factor: {1940: 4.2518, 1950: 0.3862, 1960: 0.4657, 1970: 0.4327, 1980: 0.3115, 1990: 0.1522}
     config:
       roles:
         $A: {side: a, values: {a_prevails: 1.0, b_prevails: -1.0, compromise: 0.3, limited_war: -3.0, nuclear_war: -50.0}, escalation_cost: 0.1, audience_cost: 0.5}
@@ -84,9 +89,9 @@ templates:
               # insurgents by its rival; under colonial rule the owner fights for itself
     family: attrition
     cadence: annual
-    rate: 0.005491  # per region-quarter at the reference features (fitted, E49)
-    group_factor: {europe: 0.0015, middle_east: 2.1885, south_asia: 0.0492, east_asia: 0.7057, americas: 1.2079, africa: 1.8473}
-    decade_factor: {1940: 0.0234, 1950: 1.0614, 1960: 1.2567, 1970: 2.0798, 1980: 0.005, 1990: 1.5737}
+    rate: 0.02797  # per region-quarter at the reference features (fitted, E51)
+    group_factor: {europe: 0.2699, middle_east: 3.9363, south_asia: 0.1698, east_asia: 0.2721, americas: 0.4349, africa: 0.9171}
+    decade_factor: {1940: 0.5372, 1950: 0.4837, 1960: 0.8991, 1970: 2.5762, 1980: 0.3046, 1990: 1.1992}
     config:
       sponsors:
         # the local sides (computer-run, hand values: generic judgment, as Hanoi's in E47)
@@ -109,9 +114,9 @@ templates:
 
   uprising:  # a client's uprising: the leading power decides whether to crush it
     family: intervention
-    rate: 0.003675  # per region-quarter at the reference features (fitted, E49)
-    group_factor: {europe: 0.0185, middle_east: 0.6773, south_asia: 0.0296, east_asia: 0.2389, americas: 0.0196, africa: 5.0161}
-    decade_factor: {1940: 4.5553, 1950: 0.0192, 1960: 1.3917, 1970: 0.0126, 1980: 0.0144, 1990: 0.0068}
+    rate: 0.158484  # per region-quarter at the reference features (fitted, E51)
+    group_factor: {europe: 0.0403, middle_east: 1.8282, south_asia: 0.1415, east_asia: 0.1102, americas: 0.2286, africa: 3.6511}
+    decade_factor: {1940: 5.5327, 1950: 0.092, 1960: 0.3271, 1970: 0.0231, 1980: 0.0143, 1990: 0.0109}
     config:
       clash_risk: 0.1
       costs: {back_down: 0.5, condemn: 0.05, confront: 1.0, covert_aid: 0.2, crackdown: 0.3, intervene: 1.0}

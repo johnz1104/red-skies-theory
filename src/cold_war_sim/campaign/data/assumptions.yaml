@@ -33,6 +33,7 @@ ranges:
 classes:
   # the crisis generator (generator.yaml, E49)
   - {match: "generator:precedence_quarters", group: structure, fixed: structural, why: "quarters a region's crisis blocks a generated one (decision 21)"}
+  - {match: "generator:hazard_cap", group: generator, kind: probability, why: "a region's largest chance of a generated crisis of one template in a quarter (judgment: about one a year; E51)"}
   - {match: "generator:decades/*", group: structure, fixed: structural, why: "the fit's decade bins"}
   - {match: "generator:targets/**", group: generator, fixed: historical, why: "ICB v16 counts, 1945-91 (the fit's targets)"}
   - {match: "generator:features/*/reference", group: structure, fixed: method, why: "a feature's centring: the rate applies at the reference"}
@@ -439,6 +440,10 @@ entries:
   "code:effects.NEUTRAL_CAP": {value: 0.35, fixed: structural, note: "set_controller: a neutralized region caps every power's influence here"}
   "code:effects.CONTROL_SHARE": {value: 0.65, fixed: structural, note: "set_controller: a region handed to a power lifts its influence here"}
   "code:goals.BOMB_THRESHOLD": {value: 1.0, fixed: structural, note: "tech_nuclear at the first tested weapon"}
+  "code:generator.MIN_INFLUENCE": {value: 0.02, fixed: code, note: "judgment (E49): a power below this influence share has no stake in a region and cannot be cast; with hostile relations it decides where crises can start, which E51 found limits standoffs"}
+  "code:generator.RECENT_WAR_QUARTERS": {value: 8, fixed: code, note: "judgment (E49): a war ended within this many quarters makes a settlement possible"}
+  "code:genfit.FLOOR": {value: 0.25, fixed: method, note: "judgment (E51), a fit setting, not drawn: a level keeps this share of the data's crises per castable region-quarter; it trades fit for crises that can stand in where a named one does not fire; changing it needs a refit"}
+  "code:genfit.MIN_EXPOSURE": {value: 1.0, fixed: method, note: "judgment (E51), a fit setting: below this many castable region-quarters a campaign a level keeps its factor"}
   "code:engine.EFFORT/low": {value: 0.3333333333333333, fixed: structural, note: "a war's effort levels"}
   "code:engine.EFFORT/high": {value: 0.6666666666666666, fixed: structural, note: "a war's effort levels"}
   "code:derive.FOLLOW_ON_ROLLOUTS": {value: 200, fixed: method, note: "decision values: rollouts of a later major event"}

@@ -4,7 +4,7 @@ GOALS.md section 12, decisions 16-21. Each quarter, for every region without a c
 own, each template (``standoff``, ``proxy_war``, ``uprising``, ``alignment``, ``settlement``)
 starts a crisis with hazard
 
-    h = rate x group_factor x decade_factor x exp(sum_k slope_k (x_k - reference_k))
+    h = min(hazard_cap, rate x group_factor x decade_factor x exp(sum_k slope_k (x_k - reference_k)))
 
 over the region's features (instability, how contested its influence is, tension, colonial
 rule, a recent war). Its roles are cast from the world: the region's leading power (``$A``)
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import copy
 import math
+from collections import Counter
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -52,6 +53,9 @@ TITLES = {
     "settlement": "Settlement talks",
 }
 MIN_INFLUENCE = 0.02  # a power below this share has no stake in the region
+# the fit's exposure count (genfit): castable, unblocked region-quarters by (group, decade);
+# None in play
+_EXPOSURE: Counter[tuple[str, int]] | None = None
 RECENT_WAR_QUARTERS = 8
 WAR_LABELS = frozenset(
     {"limited_war", "partition", "stalemate", "a_victory", "b_victory", "a_withdrew", "b_withdrew"}
@@ -242,7 +246,15 @@ def hazard(
     exponent = 0.0
     for name, feature in doc["features"].items():
         exponent += float(feature.get(template, 0.0)) * (x[name] - float(feature["reference"]))
-    return min(1.0, rate * math.exp(exponent))
+    return min(float(doc.get("hazard_cap", 1.0)), rate * math.exp(exponent))
+
+
+def count_exposure(counter: Counter[tuple[str, int]] | None) -> None:
+    """Count each castable, unblocked region-quarter that :func:`propose` considers into
+    *counter*, by (group, decade), for the fit (``genfit``); None stops counting."""
+
+    global _EXPOSURE
+    _EXPOSURE = counter
 
 
 def propose(catalog: Catalog, world: WorldState, seed: int) -> list[str]:
@@ -259,6 +271,8 @@ def propose(catalog: Catalog, world: WorldState, seed: int) -> list[str]:
         roles = cast(world, region)
         if roles is None:
             continue
+        if _EXPOSURE is not None:
+            _EXPOSURE[(group_of(doc, region), decade_of(doc, world.quarter))] += 1
         x = features(catalog, world, region, roles)
         for template in TEMPLATES:
             if template not in doc["templates"]:
@@ -277,6 +291,7 @@ __all__ = [
     "GeneratorError",
     "blocked",
     "cast",
+    "count_exposure",
     "decade_of",
     "event_id",
     "features",
