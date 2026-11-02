@@ -14,6 +14,9 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Training runs and entry files (rl commands write here)
+runs/
+
 # Packaging
 build/
 dist/

@@ -90,6 +90,20 @@ def cmd_generator_fit(args: argparse.Namespace) -> int:
     assert catalog.raw is not None and catalog.raw.generator
     start, _, end = args.seeds.partition("-")
     seeds = list(range(int(start), int(end or start) + 1))
+
+    def rates(doc: dict[str, Any]) -> str:
+        fitted = {
+            t: {k: spec[k] for k in ("rate", "group_factor", "decade_factor")}
+            for t, spec in doc["templates"].items()
+            if t in doc["targets"]
+        }
+        return str(yaml.safe_dump(fitted, sort_keys=False, default_flow_style=None))
+
+    def keep(round_: int, doc: dict[str, Any]) -> None:  # each round's values, as they come
+        print(f"== values after round {round_}\n{rates(doc)}", flush=True)
+        if args.output:
+            Path(args.output).write_text(yaml.safe_dump(doc, sort_keys=False))
+
     fitted = genfit.fit(
         catalog.raw.generator,
         seeds,
@@ -97,13 +111,9 @@ def cmd_generator_fit(args: argparse.Namespace) -> int:
         args.workers,
         progress=lambda message: print(message, flush=True),
         power=args.power,
+        on_round=keep,
     )
-    rates = {
-        t: {k: spec[k] for k in ("rate", "group_factor", "decade_factor")}
-        for t, spec in fitted["templates"].items()
-        if t in fitted["targets"]
-    }
-    print(yaml.safe_dump(rates, sort_keys=False, default_flow_style=None))
+    print(rates(fitted))
     if args.output:
         Path(args.output).write_text(yaml.safe_dump(fitted, sort_keys=False))
     return 0
@@ -493,24 +503,32 @@ def cmd_rl_entries(args: argparse.Namespace) -> int:
     return 0
 
 
+def _scored_entries(catalog: Catalog, entries: Any) -> list[Any]:
+    """One entry per tree event: the historical one, else the first."""
+
+    from .rl import evaluate as rl_evaluate
+
+    chosen: dict[str, Any] = {}
+    for entry in rl_evaluate.tree_entries(catalog, entries):
+        current = chosen.get(entry.event_id)
+        if current is None or (entry.source == "historical" and current.source != "historical"):
+            chosen[entry.event_id] = entry
+    return list(chosen.values())
+
+
 def _tree_scores(
     catalog: Catalog, entries: Any, policy: Any, temperature: float | None = None
 ) -> dict[str, Any]:
     from .rl import evaluate as rl_evaluate
 
     scored: dict[str, Any] = {}
-    for entry in rl_evaluate.tree_entries(catalog, entries):
-        if entry.source != "historical" and any(
-            e.source == "historical" for e in entries[entry.event_id]
-        ):
-            continue  # score at the historical entry when there is one
-        if entry.event_id in scored:
-            continue
+    for entry in _scored_entries(catalog, entries):
         report = rl_evaluate.tree_report(catalog, entry, policy, qre_temperature=temperature)
         scored[entry.event_id] = {
             name: {
                 "exploitability": round(score.exploitability, 5),
                 "worst_regret": round(score.credibility, 5),
+                "path_regret": float(f"{score.path_regret:.3e}"),
                 "qre_distance": None
                 if score.qre_distance is None
                 else round(score.qre_distance, 4),
@@ -523,7 +541,7 @@ def _tree_scores(
 
 
 def cmd_rl_train(args: argparse.Namespace) -> int:
-    """Masked-PPO self-play on single-event scenarios."""
+    """Masked-PPO self-play: single-event scenarios or freestyle campaigns."""
 
     from .rl import ppo
 
@@ -531,7 +549,29 @@ def cmd_rl_train(args: argparse.Namespace) -> int:
     events = tuple(_rl_events(catalog, args.events)) if args.events else ()
     if args.mode == "scenario" and not args.entries:
         raise SystemExit("rl train: scenario mode needs --entries")
-    config = ppo.PPOConfig(
+    try:
+        config = _ppo_config(ppo, args, events)
+    except ValueError as error:
+        raise SystemExit(f"rl train: {error}") from error
+    evaluate = None
+    if config.mode == "scenario":
+        entries = ppo.scenario_entries(config)
+
+        def evaluate(policy: Any) -> dict[str, Any]:
+            return _tree_scores(catalog, entries, policy, config.temperature)
+
+    ppo.train(
+        config,
+        Path(args.out),
+        resume=Path(args.resume) if args.resume else None,
+        progress=lambda message: print(message, file=sys.stderr),
+        evaluate=evaluate,
+    )
+    return 0
+
+
+def _ppo_config(ppo: Any, args: argparse.Namespace, events: tuple[str, ...]) -> Any:
+    return ppo.PPOConfig(
         entries=args.entries or "",
         events=events,
         iterations=args.iterations,
@@ -554,22 +594,8 @@ def cmd_rl_train(args: argparse.Namespace) -> int:
         generator=args.generator,
         league=args.league,
         league_share=args.league_share,
+        chance_expected=args.chance_expected,
     )
-    evaluate = None
-    if config.mode == "scenario":
-        entries = ppo.scenario_entries(config)
-
-        def evaluate(policy: Any) -> dict[str, Any]:
-            return _tree_scores(catalog, entries, policy, config.temperature)
-
-    ppo.train(
-        config,
-        Path(args.out),
-        resume=Path(args.resume) if args.resume else None,
-        progress=lambda message: print(message, file=sys.stderr),
-        evaluate=evaluate,
-    )
-    return 0
 
 
 def cmd_rl_br(args: argparse.Namespace) -> int:
@@ -610,12 +636,16 @@ def cmd_rl_eval(args: argparse.Namespace) -> int:
     entries = scenario.load_entries(Path(args.entries or learner.config.entries))
     events = _rl_events(catalog, args.events) if args.events else sorted(entries)
     entries = {e: entries[e] for e in events if e in entries}
-    for entry in rl_evaluate.tree_entries(catalog, entries):
-        if args.all_entries or entry.source == "historical":
-            report = rl_evaluate.tree_report(
-                catalog, entry, policy, qre_temperature=learner.config.temperature
-            )
-            print("\n".join(report.text()))
+    scored = (
+        rl_evaluate.tree_entries(catalog, entries)
+        if args.all_entries
+        else _scored_entries(catalog, entries)
+    )
+    for entry in scored:
+        report = rl_evaluate.tree_report(
+            catalog, entry, policy, qre_temperature=learner.config.temperature
+        )
+        print("\n".join(report.text()))
     trees = {e.event_id for e in rl_evaluate.tree_entries(catalog, entries)}
     others = {e: v for e, v in entries.items() if e not in trees}
     if others:
@@ -957,7 +987,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     gen_fit.set_defaults(func=cmd_generator_fit)
 
-    rl = sub.add_parser("rl", help="reinforcement learning on single-event scenarios")
+    rl = sub.add_parser(
+        "rl", help="reinforcement learning: single-event scenarios and freestyle campaigns"
+    )
     rl_sub = rl.add_subparsers(dest="rl_command", required=True)
     rl_entries = rl_sub.add_parser("entries", help="capture scenario entry states")
     rl_entries.add_argument("--events", help="tier1 (default) or comma-separated event ids")
@@ -981,6 +1013,11 @@ def build_parser() -> argparse.ArgumentParser:
     rl_train.add_argument("--gamma", type=float, default=1.0, help="discount per decision")
     rl_train.add_argument("--league", type=int, default=0, help="snapshot every K iterations")
     rl_train.add_argument("--league-share", type=float, default=0.5)
+    rl_train.add_argument(
+        "--chance-expected",
+        action="store_true",
+        help="scenario mode: take chance and computer-run stretches in expectation (E50)",
+    )
     rl_train.add_argument("--events", help="tier1 or comma-separated ids (default: all entries)")
     rl_train.add_argument("--iterations", type=int, default=50)
     rl_train.add_argument("--episodes", type=int, default=256, help="per iteration")
@@ -1028,7 +1065,9 @@ def build_parser() -> argparse.ArgumentParser:
     rl_eval.add_argument("--entries", help="default: the run's entries")
     rl_eval.add_argument("--events", help="tier1 or comma-separated ids (default: all entries)")
     rl_eval.add_argument("--episodes", type=int, default=200, help="for multi-quarter events")
-    rl_eval.add_argument("--all-entries", action="store_true", help="score every entry")
+    rl_eval.add_argument(
+        "--all-entries", action="store_true", help="score every entry (default: one an event)"
+    )
     rl_eval.set_defaults(func=cmd_rl_eval)
     return parser
 
