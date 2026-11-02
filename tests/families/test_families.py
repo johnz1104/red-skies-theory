@@ -268,7 +268,9 @@ def test_explicit_bargaining_values_reproduce_the_surplus_split() -> None:
     a = bargaining.solve(bargaining.build(plain))
     b = bargaining.solve(bargaining.build(explicit))
     assert a.offer == b.offer and a.accept == b.accept and a.commit == b.commit
-    assert a.values == pytest.approx(b.values)
+    assert a.values.keys() == b.values.keys()  # approx compares one level (pytest 9.2)
+    for key, value in a.values.items():
+        assert value == pytest.approx(b.values[key])
 
 
 def test_bargaining_vetoed_and_consent_values() -> None:
