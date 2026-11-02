@@ -52,6 +52,7 @@ class Entry:
     seed: int
     quarter: int
     state: EngineState
+    catalog: str = ""  # Catalog.digest at capture ("" in entries saved before E50)
 
     def __deepcopy__(self, memo: dict[int, object]) -> Entry:
         return self
@@ -102,8 +103,23 @@ def capture_entries(
                 break
             engine.act(policy.choose(engine, request, rng))
         for event_id, state in engine.captured.items():
-            entries[event_id].append(Entry(event_id, source, seed, state.world.quarter, state))
+            entries[event_id].append(
+                Entry(event_id, source, seed, state.world.quarter, state, catalog.digest)
+            )
     return entries
+
+
+def check_entries(entries: Mapping[str, Sequence[Entry]], catalog: Catalog) -> None:
+    """Raise if any entry was captured under another catalog. An entry holds its event's
+    game as bound when it started, so a later edit to the data would not reach it (E50:
+    the Cuba entries trained in E48 predated its officers)."""
+
+    stale = [e for items in entries.values() for e in items if e.catalog != catalog.digest]
+    if stale:
+        raise ValueError(
+            f"{len(stale)} entries were captured under a different catalog (first: "
+            f"{stale[0].label}); recapture them with `rl entries`"
+        )
 
 
 _CATALOG: Catalog | None = None
@@ -141,6 +157,9 @@ def save_entries(path: Path, entries: Mapping[str, Sequence[Entry]]) -> None:
 
 
 def load_entries(path: Path) -> dict[str, list[Entry]]:
+    """Entries saved by :func:`save_entries`. They are pickles, which can run code when
+    loaded: load only files you made yourself."""
+
     with path.open("rb") as handle:
         loaded: dict[str, list[Entry]] = pickle.load(handle)  # our own cache: trusted
     return loaded
@@ -191,7 +210,9 @@ class ScenarioEnv:
         self.weights = raw / raw.sum()
         base = config or EngineConfig(npc_policy="equilibrium", playable_tier=1)
         self.config = replace(base, capture=frozenset(), scope=None)
-        self.engine = CampaignEngine(catalog or load_catalog(), self.config)
+        catalog = catalog or load_catalog()
+        check_entries(self.entries, catalog)
+        self.engine = CampaignEngine(catalog, self.config)
         self.kappa = self.engine.catalog.goals.kappa
         self.possible_agents: tuple[str, ...] = tuple(
             i for i in IDENTITIES if seat(i) in self.config.agents
@@ -238,6 +259,7 @@ class ScenarioEnv:
         self.terminations = dict.fromkeys(self.agents, False)
         self.truncations = dict.fromkeys(self.agents, False)
         self.infos = {a: {} for a in self.agents}
+        self._totals = dict.fromkeys(self.agents, 0.0)  # chance-expected returns (E50)
         engine.resume()
         self._collect()
 
@@ -276,12 +298,27 @@ class ScenarioEnv:
         self._collect()
 
     def returns(self) -> dict[str, float]:
-        """Each agent's return in the event's game, in goal units (once it resolved)."""
+        """Each agent's return in the event's game, in goal units (once it resolved); with
+        chance-expected returns, the estimate the rewards add up to."""
 
         returns = self.engine.s.last_returns.get(self.event_id)
         if not self.engine.s.scope_done or returns is None:
             return {}
+        if self.config.chance_expected:
+            return dict(self._totals)
         return {a: float(returns.get(role, 0.0)) / self.kappa for a, role in self.roles.items()}
+
+    def outcome_masses(self) -> dict[str, float]:
+        """The outcome distribution the episode stands for (once it resolved): its outcome,
+        or with chance-expected returns the probability mass of every terminal counted."""
+
+        if not self.engine.s.scope_done:
+            return {}
+        expected = self.engine.s.expected
+        if self.config.chance_expected and expected is not None:
+            return dict(expected.outcomes)
+        outcome = self.outcome()
+        return {outcome: 1.0} if outcome is not None else {}
 
     def outcome(self) -> str | None:
         if not self.engine.s.scope_done:
@@ -292,7 +329,15 @@ class ScenarioEnv:
     def _collect(self) -> None:
         self.engine.pop_rewards()  # the campaign's goal reward is not a scenario's reward
         self.rewards = dict.fromkeys(self.agents, 0.0)
-        if self.engine.done:
+        if self.config.chance_expected:  # payoffs as the engine counts them in expectation
+            accrued = self.engine.pop_expected()
+            for agent in self.agents:
+                value = accrued.get(self.roles[agent], 0.0) / self.kappa
+                self.rewards[agent] = value
+                self._cumulative_rewards[agent] += value
+                self._totals[agent] += value
+                self.terminations[agent] = self.engine.done
+        elif self.engine.done:
             final = self.returns()
             for agent in self.agents:
                 self.rewards[agent] = final.get(agent, 0.0)
@@ -315,6 +360,8 @@ class ScenarioEnv:
             "event": self.event_id,
             "entry": self.entry.label if self.entry is not None else "",
             "quarter": calendar.fmt(self.engine.world.quarter),
+            # the weight of this episode's path so far (chance-expected returns, E50)
+            "survival": 1.0 if self.engine.s.expected is None else self.engine.s.expected.survival,
         }
         if self.engine.done:
             info["outcome"] = self.outcome()
@@ -352,6 +399,7 @@ __all__ = [
     "ScenarioEnv",
     "capture_campaign_entries",
     "capture_entries",
+    "check_entries",
     "load_entries",
     "merge_entries",
     "power_roles",

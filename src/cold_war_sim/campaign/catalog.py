@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -392,9 +392,24 @@ class Catalog:
     postures: Mapping[str, tuple[float, float, float, float]] = field(default_factory=dict)
     raw: RawDocuments | None = None  # the source documents, for variants
     fingerprint: str = ""  # "" for the catalog as loaded; a digest of a variant's changes
+    _digest: str | None = field(default=None, init=False, repr=False, compare=False)
 
     def __deepcopy__(self, memo: dict[int, object]) -> Catalog:
         return self
+
+    @property
+    def digest(self) -> str:
+        """A digest of the source documents: state captured under another catalog (a
+        scenario entry, whose event was bound when it started) is stale under this one."""
+
+        if self._digest is None:
+            raw = self.raw
+            if raw is None:
+                self._digest = self.fingerprint
+            else:
+                docs = {f.name: getattr(raw, f.name) for f in fields(raw) if f.name != "era_titles"}
+                self._digest = stable_hash(docs)
+        return self._digest
 
     def variant(self, values: Mapping[str, float], fingerprint: str | None = None) -> Catalog:
         """A copy with the numbers at the given addresses (:func:`split_address`) changed.

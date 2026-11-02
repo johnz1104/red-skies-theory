@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import copy
 from collections import OrderedDict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -100,6 +100,12 @@ class EngineConfig:
     # chance) or "reference" (computer-run reference play and sampled chance, E49), so a
     # world that has left history is not pulled back to it (WRITEUP 6.5, hindsight 2)
     rails: str = "historical"
+    # scenario training (E50): in the scoped event (instant cadence, sampled chance), the
+    # stretches of chance and computer-run choices are expanded and their terminal
+    # payoffs taken in expectation, while the sampled path goes on to the next agent
+    # decision with a survival weight (ExpectedReturns): rare catastrophes stop swamping
+    # the learner's advantages
+    chance_expected: bool = False
 
     def __post_init__(self) -> None:
         if not set(self.agents) <= set(POWERS):
@@ -116,6 +122,8 @@ class EngineConfig:
             raise ValueError("baseline_temperature must be non-negative")
         if self.rails not in ("historical", "reference"):
             raise ValueError("rails must be historical or reference")
+        if self.chance_expected and self.chance_mode != "sample":
+            raise ValueError("chance_expected needs sampled chance")
 
 
 @dataclass(slots=True)
@@ -130,6 +138,35 @@ class ActiveEvent:
     chance_count: int = 0
     round_marker: int = 0
     annual_choices: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ExpectedReturns:
+    """The scoped event's chance-expected return (``EngineConfig.chance_expected``, E50).
+
+    At each stretch of chance and computer-run choices, the terminal leaves' payoffs
+    count in expectation and the sampled path goes on to one of the agent decisions that
+    end the stretch, drawn by its probability among them. Its weight, *survival*, is the
+    product of those decisions' total probabilities so far; an agent's estimate of its
+    return is unbiased, and its realized end counts at the weight left (0 once a stretch
+    ended in a terminal)."""
+
+    survival: float = 1.0
+    values: dict[str, float] = field(default_factory=dict)  # role -> weighted, not yet popped
+    outcomes: dict[str, float] = field(default_factory=dict)  # label -> probability mass
+
+    def add(self, values: Mapping[str, float], outcomes: Mapping[str, float]) -> None:
+        for role, value in values.items():
+            self.values[role] = self.values.get(role, 0.0) + self.survival * value
+        for label, mass in outcomes.items():
+            self.outcomes[label] = self.outcomes.get(label, 0.0) + self.survival * mass
+
+    def close(self, returns: Mapping[str, float], label: str) -> None:
+        self.add(returns, {label: 1.0})
+        self.survival = 0.0
+
+
+NATURE_NODE_CAP = 50_000  # a larger stretch is sampled step by step instead
 
 
 @dataclass(slots=True)
@@ -174,6 +211,7 @@ class EngineState:
     assumptions: dict[str, float] = field(default_factory=dict)  # this episode's draw
     variant: Catalog | None = None  # the catalog with the draw applied (None: no sampling)
     scope_done: bool = False  # the scoped event has resolved (EngineConfig.scope)
+    expected: ExpectedReturns | None = None  # EngineConfig.chance_expected (E50)
 
 
 # Baselines are pure functions of (family, bound config): cache them across
@@ -429,6 +467,13 @@ class CampaignEngine:
         active = self.s.active.get(request.source)
         if active is None or request.role is None:
             return {}
+        return self._reference_distribution(active, active.state, [o.id for o in request.options])
+
+    def _reference_distribution(
+        self, active: ActiveEvent, state: Any, legal: Sequence[str]
+    ) -> dict[str, float]:
+        """Reference play's probabilities at *state*, any state of *active*'s game."""
+
         major = self.catalog.events[active.event_id].major
         assert major is not None
         policy = baseline_policy(
@@ -437,11 +482,21 @@ class CampaignEngine:
             self.config.baseline_iterations,
             self.config.baseline_temperature,
         )
-        dist = policy.action_probabilities(active.state)
-        legal = {o.id for o in request.options}
-        filtered = {a: p for a, p in dist.items() if a in legal and p > 0.0}
+        dist = policy.action_probabilities(state)
+        allowed = set(legal)
+        filtered = {a: p for a, p in dist.items() if a in allowed and p > 0.0}
         total = sum(filtered.values())
         return {a: p / total for a, p in filtered.items()} if total > 0 else {}
+
+    def pop_expected(self) -> dict[str, float]:
+        """The scoped event's chance-expected payoffs accrued since the last call, by role
+        (``EngineConfig.chance_expected``; empty when off)."""
+
+        expected = self.s.expected
+        if expected is None:
+            return {}
+        values, expected.values = expected.values, {}
+        return values
 
     # ----------------------------------------------------------------- phases
     def _advance(self) -> None:
@@ -714,6 +769,12 @@ class CampaignEngine:
                     self._record_war_effort(active)
                     return True
             player = state.current_player()
+            if (
+                self._expects(active, major)
+                and (player == CHANCE or not self._agent_decides(active, player, state))
+                and self._follow_expected(active)
+            ):
+                continue
             if player == CHANCE:
                 state.apply_action(self._chance(active))
                 active.chance_count += 1
@@ -733,19 +794,106 @@ class CampaignEngine:
                 index = rails.choose(self, request, s.npc_rng)
                 self._apply_subgame_choice(active, request, index, agent=False)
                 continue
-            power = role if role in POWERS else None
-            is_agent = (
-                power is not None
-                and self._asks(power, active.event_id)
-                and s.world.powers[power].status in ("active", "insurgent")
-            )
-            if is_agent and len(request.options) > 1:
+            if self._agent_decides(active, role, state):
                 s.pending = PendingDecision(request, ("subgame", active.event_id))
                 return False
             index = (
                 0 if len(request.options) == 1 else self.npc_policy.choose(self, request, s.npc_rng)
             )
             self._apply_subgame_choice(active, request, index, agent=False)
+
+    def _agent_decides(self, active: ActiveEvent, role: str, state: Any) -> bool:
+        """Whether *role*'s choice at *state* of *active*'s game goes to an agent."""
+
+        return (
+            role in POWERS
+            and self._asks(role, active.event_id)
+            and self.s.world.powers[role].status in ("active", "insurgent")
+            and len(state.legal_actions()) > 1
+        )
+
+    # ------------------------------------------------- chance-expected returns (E50)
+    def _expects(self, active: ActiveEvent, major: MajorSpec) -> bool:
+        return (
+            self.config.chance_expected
+            and active.event_id == self.config.scope
+            and major.cadence == "instant"
+            and not self.on_rails(major)
+        )
+
+    def _follow_expected(self, active: ActiveEvent) -> bool:
+        """Expand the stretch of chance and computer-run choices from *active*'s state to
+        its terminals and agent decisions, count the terminals in expectation, and follow
+        a path to one agent decision drawn by its probability among them (to a terminal
+        drawn by its probability when the stretch has no agent decision). False, with
+        nothing changed, when the stretch is too large or a computer-run role's
+        probabilities are unknown (then the step is sampled as usual)."""
+
+        values: dict[str, float] = {}
+        outcomes: dict[str, float] = {}
+        ends: list[tuple[float, list[str]]] = []  # agent decisions
+        terminals: list[tuple[float, list[str]]] = []
+        stack: list[tuple[Any, float, list[str]]] = [(active.state.clone(), 1.0, [])]
+        nodes = 0
+        while stack:
+            state, prob, path = stack.pop()
+            nodes += 1
+            if nodes > NATURE_NODE_CAP:
+                return False
+            if state.is_terminal():
+                for role, value in state.returns().items():
+                    values[role] = values.get(role, 0.0) + prob * value
+                label = state.outcome().label
+                outcomes[label] = outcomes.get(label, 0.0) + prob
+                terminals.append((prob, path))
+                continue
+            player = state.current_player()
+            if player == CHANCE:
+                branches = [(a, p) for a, p in state.chance_outcomes() if p > 0.0]
+            elif self._agent_decides(active, player, state):
+                ends.append((prob, path))
+                continue
+            else:
+                dist = self._role_distribution(active, state)
+                if dist is None:
+                    return False
+                branches = list(dist.items())
+            for action, p in branches:
+                child = state.clone()
+                child.apply_action(action)
+                stack.append((child, prob * p, [*path, action]))
+        expected = self.s.expected
+        if expected is None:
+            expected = self.s.expected = ExpectedReturns()
+        expected.add(values, outcomes)
+        mass = sum(p for p, _ in ends)
+        pool = ends if mass > 0.0 else terminals
+        weights = np.asarray([p for p, _ in pool])
+        chosen = pool[int(active.rng.choice(len(pool), p=weights / weights.sum()))][1]
+        expected.survival = expected.survival * mass if mass > 0.0 else 0.0
+        for action in chosen:  # through the usual bookkeeping: trace, counts
+            state = active.state
+            player = state.current_player()
+            if player == CHANCE:
+                state.apply_action(action)
+                active.chance_count += 1
+            else:
+                request = self._subgame_request(active, player, state.legal_actions())
+                self._apply_subgame_choice(active, request, request.index_of(action), agent=False)
+        return True
+
+    def _role_distribution(self, active: ActiveEvent, state: Any) -> dict[str, float] | None:
+        """A computer-run role's choice probabilities at *state*, as the computer-run
+        policy draws them (None for a policy that gives none)."""
+
+        legal = list(state.legal_actions())
+        if len(legal) == 1:
+            return {legal[0]: 1.0}
+        if self.config.npc_policy == "random":
+            return {a: 1.0 / len(legal) for a in legal}
+        if self.config.npc_policy != "equilibrium":
+            return None
+        return self._reference_distribution(active, state, legal) or None
 
     def _subgame_request(
         self, active: ActiveEvent, role: str, legal: tuple[str, ...]
@@ -858,6 +1006,10 @@ class CampaignEngine:
             s.last_returns[event_id] = returns
             if event_id == self.config.scope:
                 s.scope_done = True
+                if self._expects(active, major):  # the realized end, at the weight left
+                    if s.expected is None:
+                        s.expected = ExpectedReturns()
+                    s.expected.close(returns, outcome.label)
             self._record_standing(
                 event_id, standing.contest(self.catalog, event, active.config, outcome, world)
             )
