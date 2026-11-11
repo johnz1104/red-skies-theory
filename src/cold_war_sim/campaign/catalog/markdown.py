@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from . import calendar
-from .catalog import Catalog, EventSpec
+from ..world import calendar
+from .core import Catalog, EventSpec
 
 HEADER = """# Event catalog
 
@@ -17,25 +17,30 @@ and condition hold; **leadership** events swap a power's leader.
 **Tier** is the review priority of a major event. With `run --playable-tier N`
 (`EngineConfig.playable_tier`), major events above tier N run on rails: they
 still fire under their conditions but play their historical choices and chance.
-A **hold-out** event's historical choices are never used when adjusting goals
-(`docs/GOALS.md` section 11).
+A **hold-out** event's historical choices are never used when adjusting goals.
 
 **Payoffs** are `hand` (set in the YAML) or `derived` (power roles value each
-outcome by the change in their goal score; `campaign/derive.py`).
+outcome by the change in their goal score; `campaign.payoffs.derive`).
 """
 
 
 def _window(event: EventSpec) -> str:
+    """An event's window as ``start to end`` (``open`` where unbounded)."""
+
     start = calendar.fmt(event.earliest) if event.earliest is not None else "open"
     end = calendar.fmt(event.latest) if event.latest is not None else "open"
     return f"{start} to {end}"
 
 
 def _date(event: EventSpec) -> str:
+    """An event's historical date, or nothing."""
+
     return calendar.fmt(event.historical_date) if event.historical_date is not None else ""
 
 
 def render_markdown(catalog: Catalog) -> str:
+    """The catalog as Markdown: by era, a table of major events and lists of the rest."""
+
     counts = catalog.counts()
     lines = [
         HEADER,
