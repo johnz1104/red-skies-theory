@@ -10,17 +10,21 @@ from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
-from ..games import sample_action
-from .decisions import DecisionRequest
+from ...games import sample_action
+from .requests import DecisionRequest
 
 if TYPE_CHECKING:
-    from .engine import CampaignEngine
+    from ..engine.core import CampaignEngine
 
 
 class CampaignPolicy(Protocol):
+    """A campaign policy: a choice of option for the engine's pending request."""
+
     def choose(
         self, engine: CampaignEngine, request: DecisionRequest, rng: np.random.Generator
-    ) -> int: ...
+    ) -> int:
+        """The index of the option chosen for *request*."""
+        ...
 
 
 class RandomPolicy:
@@ -29,6 +33,8 @@ class RandomPolicy:
     def choose(
         self, engine: CampaignEngine, request: DecisionRequest, rng: np.random.Generator
     ) -> int:
+        """A uniform draw over the options."""
+
         return int(rng.integers(len(request.options)))
 
 
@@ -39,6 +45,10 @@ class HistoricalPolicy:
     def choose(
         self, engine: CampaignEngine, request: DecisionRequest, rng: np.random.Generator
     ) -> int:
+        """The historical option; where history marks none, the modal choice of reference
+        play in a sub-game or decision event, else the first option.
+        """
+
         index = request.historical_index()
         if index is not None:
             return index
@@ -61,6 +71,8 @@ class EquilibriumPolicy:
     def choose(
         self, engine: CampaignEngine, request: DecisionRequest, rng: np.random.Generator
     ) -> int:
+        """A draw from reference play in a sub-game or decision event; elsewhere the fallback's choice."""
+
         if request.role is None and request.kind != "event_decision":
             return self._fallback.choose(engine, request, rng)
         dist = engine.baseline_distribution(request)
@@ -102,6 +114,8 @@ class DoctrinePolicy:
     def choose(
         self, engine: CampaignEngine, request: DecisionRequest, rng: np.random.Generator
     ) -> int:
+        """The doctrine's choice on a strategy turn; reference play everywhere else."""
+
         if request.source != "strategy":
             return self._reference.choose(engine, request, rng)
         if self.doctrine == "historical":
@@ -121,6 +135,10 @@ class DoctrinePolicy:
 
 
 def _contested(engine: CampaignEngine, power: str, rival: str) -> str:
+    """The region most contested between *power* and *rival*: the largest minimum of
+    their influence shares.
+    """
+
     regions = engine.world.regions
     best = max(
         regions,
@@ -141,6 +159,8 @@ POLICIES: dict[str, type] = {
 
 
 def make_policy(name: str) -> CampaignPolicy:
+    """The policy named *name* (a key of ``POLICIES``)."""
+
     try:
         policy: CampaignPolicy = POLICIES[name]()
     except KeyError as exc:

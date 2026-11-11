@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from ...records import Record
 
 MAX_OPTIONS = 20
 
@@ -18,24 +18,43 @@ EVENT_KINDS = ("event_decision",)  # a decision event's choice (catalog kind "de
 DECISION_KINDS = STRATEGY_KINDS + FAMILY_KINDS + EVENT_KINDS
 
 
-@dataclass(frozen=True, slots=True)
-class Option:
-    id: str
-    label: str
-    historical: bool = False
+class Option(Record):
+    """One choice of a decision; ``historical`` marks the choice history made."""
+
+    def __init__(
+        self,
+        id: str,
+        label: str,
+        historical: bool = False,
+    ) -> None:
+        self.id = id
+        self.label = label
+        self.historical = historical
 
 
-@dataclass(frozen=True, slots=True)
-class DecisionRequest:
-    power: str
-    kind: str
-    source: str  # "strategy" or an event id
-    options: tuple[Option, ...]
-    role: str | None = None
-    family: str | None = None
-    round: int = 0
+class DecisionRequest(Record):
+    """A decision put to a power: a strategy turn, a move in a sub-game, or a decision event."""
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        power: str,
+        kind: str,
+        source: str,
+        options: tuple[Option, ...],
+        role: str | None = None,
+        family: str | None = None,
+        round: int = 0,
+    ) -> None:
+        self.power = power
+        self.kind = kind
+        self.source = source  # "strategy" or an event id
+        self.options = options
+        self.role = role
+        self.family = family
+        self.round = round
+        self._check()
+
+    def _check(self) -> None:
         if not self.options:
             raise ValueError("a decision needs at least one option")
         if len(self.options) > MAX_OPTIONS:
@@ -44,12 +63,16 @@ class DecisionRequest:
             raise ValueError(f"unknown decision kind {self.kind!r}")
 
     def index_of(self, option_id: str) -> int:
+        """The index of the option with id *option_id*."""
+
         for i, option in enumerate(self.options):
             if option.id == option_id:
                 return i
         raise KeyError(option_id)
 
     def historical_index(self) -> int | None:
+        """The index of the historical option, if one is marked."""
+
         for i, option in enumerate(self.options):
             if option.historical:
                 return i
