@@ -17,10 +17,14 @@ def parse(text: str) -> int:
 
 
 def fmt(quarter: int) -> str:
+    """The quarter index as ``"1962-Q4"``."""
+
     return f"{quarter // 4}-Q{quarter % 4 + 1}"
 
 
 def year(quarter: int) -> int:
+    """The calendar year of a quarter index."""
+
     return quarter // 4
 
 

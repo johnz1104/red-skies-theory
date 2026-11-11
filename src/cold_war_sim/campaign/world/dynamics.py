@@ -1,25 +1,20 @@
 """Quarterly world dynamics (all coefficients illustrative).
 
 Each power's yearly posture splits its state budget (economy x burden) among
-conventional forces, nuclear forces and science (the share reinvested in the
-economy raises growth in proportion to the share of GDP it moves). Force stocks follow the
-discretized arms law ``x += dt * (-delta * x + b * u)`` with the depreciation
-and control effectiveness of the original arms-competition model
-(delta = 0.12, b = 0.8). Science spending advances nuclear, missile and space
-technology, whose thresholds trigger milestone cutscenes. Region focus moves
-influence; a power under pressure gains less (containment). Diplomacy moves each
-pair's shared relation: hostility is one-sided, but warmth needs both sides (one
-engaging side warms at half the step). Arms growth and wars raise tension.
+conventional forces, nuclear forces, science and the economy. Force stocks follow the
+discretized arms law ``x += dt (-delta x + b u)``. Science advances nuclear, missile and
+space technology. Region focus moves influence, diplomacy moves relations, and arms
+growth and wars raise tension.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from .effects import shift_influence
+from ...records import Record
+from ..catalog.effects import shift_influence
 from .state import (
     POWER_FIELDS,
     POWERS,
@@ -31,16 +26,15 @@ from .state import (
 )
 
 if TYPE_CHECKING:
-    from .catalog import Catalog
+    from ..catalog.core import Catalog
 
 DT = 0.25  # years per quarter
 TECH_CAP = 10.0  # technology stocks stop here (state.POWER_FIELDS)
 WAR_EFFORT_SCALE = 4.0  # a war effort of 1 counts four times in the stability formulas
 NUCLEAR_STRENGTH_WEIGHT = 0.6  # nuclear forces in military strength (the pre-goals score)
 
-# The postures' shares of the state budget (economy, conventional, nuclear, science) are
-# data: the `postures` block of powers.yaml (moved there on 2026-10-17 so that the
-# assumptions register can address them).
+# Budget shares for each posture are in powers.yaml's `postures` block, where
+# the assumptions register can include them in sensitivity checks.
 POSTURE_KEYS = ("economy", "conventional", "nuclear", "science")
 
 DEFAULTS: dict[str, float] = {
@@ -50,17 +44,16 @@ DEFAULTS: dict[str, float] = {
     "conventional_scale": 15.0,
     "nuclear_scale": 30.0,
     "tech_scale": 5.0,
-    # growth points per unit of GDP moved between investment and the military: meta-analyses
-    # find small effects (Alptekin and Levine 2012, small positive; Simpartl 2024, small
-    # negative; Dunne and Tian's surveys). Placeholder within "small": 0.15 points per 1% of
-    # GDP (user decision 2026-10-13, EXPERIMENTS.md E35; was 0.08 per unit of budget share,
-    # about 0.8 points per 1% of US GDP)
+    # growth points per unit of GDP moved between investment and the military: meta-analyses find
+    # small effects (Alptekin and Levine 2012, small positive; Simpartl 2024, small negative;
+    # Dunne and Tian's surveys). Placeholder within "small": 0.15 points per 1% of GDP (was 0.08
+    # per unit of budget share, about 0.8 points per 1% of US GDP)
     "investment_growth": 0.15,
     "burden_drag": 0.05,
     "aid_rate": 0.06,
     "covert_rate": 0.05,
     "covert_destabilize": 0.08,
-    "containment": 0.3,  # share of a pressured power's aid and covert gains lost (placeholder, E35)
+    "containment": 0.3,  # share of a pressured power's aid and covert gains lost (placeholder)
     "influence_decay": 0.02,
     "region_stability_reversion": 0.25,
     "relations_step": 0.03,
@@ -75,32 +68,45 @@ DEFAULTS: dict[str, float] = {
     "war_growth_drag": 0.01,
     "war_stability_drain": 0.01,
     "war_tension": 0.002,
-    # the domestic cost of fighting with one's own troops (E48): a quarter of direct effort
-    # lowers the stability target by this, times the power's casualty_sensitivity
-    # (powers.yaml: democracies 1, autocracies less). Public support falls as casualties
-    # mount (Mueller 1973; Gartner and Segura 1998); stability's reversion toward its
-    # target gives the concave path of support over a long war
+    # the domestic cost of fighting with one's own troops: a quarter of direct effort lowers the
+    # stability target by this, times the power's casualty_sensitivity (powers.yaml: democracies
+    # 1, autocracies less). Public support falls as casualties mount (Mueller 1973; Gartner and
+    # Segura 1998); stability's reversion toward its target gives the concave path of support
+    # over a long war
     "casualty_drain": 0.25,
-    # reference points of the growth and stability formulas, moved from the code on
-    # 2026-10-17 (same values): a burden of 10% of GDP costs no growth, growth above 3% a
-    # year raises stability, half of nuclear spending advances missiles, and reputations
-    # drift toward 0.5. The investment reference is the balanced posture's reinvested share
+    # Reference points: a burden of 10% of GDP costs no growth; growth above 3% a year
+    # raises stability; half of nuclear spending advances missiles; and credibility
+    # drifts toward 0.5. Investment is measured against the balanced posture's share.
     "burden_reference": 0.1,
     "stability_growth_reference": 0.03,
     "missile_from_nuclear": 0.5,
     "reputation_target": 0.5,
-    # one engaging side warms a relation by this share of a step (E35: warmth needs both)
+    # one engaging side warms a relation by this share of a step (warmth needs both)
     "one_sided_warmth": 0.5,
 }
 
 
-@dataclass(frozen=True)
-class DynamicsParams:
-    values: Mapping[str, float]
-    tech_rates: Mapping[str, Mapping[str, float]]
-    efficiency: Mapping[str, float]
-    postures: Mapping[str, tuple[float, float, float, float]]
-    casualty_sensitivity: Mapping[str, float] = field(default_factory=dict)
+class DynamicsParams(Record):
+    """The dynamics' coefficients (``DEFAULTS`` overridden by ``powers.yaml``), with each
+    power's technology rates, military efficiency and casualty sensitivity and the
+    postures' budget shares.
+    """
+
+    def __init__(
+        self,
+        values: Mapping[str, float],
+        tech_rates: Mapping[str, Mapping[str, float]],
+        efficiency: Mapping[str, float],
+        postures: Mapping[str, tuple[float, float, float, float]],
+        casualty_sensitivity: Mapping[str, float] | None = None,
+    ) -> None:
+        self.values = values
+        self.tech_rates = tech_rates
+        self.efficiency = efficiency
+        self.postures = postures
+        self.casualty_sensitivity: Mapping[str, float] = (
+            {} if casualty_sensitivity is None else casualty_sensitivity
+        )
 
     def __getitem__(self, key: str) -> float:
         return self.values[key]
@@ -110,6 +116,8 @@ class DynamicsParams:
 
     @classmethod
     def from_catalog(cls, catalog: Catalog) -> DynamicsParams:
+        """The parameters of *catalog*; an override of an unknown coefficient is an error."""
+
         dynamics, powers = catalog.dynamics, catalog.powers
         unknown = set(dynamics) - set(DEFAULTS)
         if unknown:
@@ -122,6 +130,8 @@ class DynamicsParams:
 
 
 def military_strength(world: WorldState, power: str) -> float:
+    """Conventional forces plus weighted nuclear forces (the pre-goals score's measure)."""
+
     state = world.powers[power]
     return state.conventional + NUCLEAR_STRENGTH_WEIGHT * state.nuclear
 
@@ -232,6 +242,11 @@ def step(
 
 
 def _focus(world: WorldState, power: str, params: DynamicsParams) -> None:
+    """A power's region focus: aid or covert action shifts influence toward it in
+    proportion to the square root of its economy, less under pressure (containment);
+    covert action also destabilizes the region.
+    """
+
     state = world.powers[power]
     if state.focus_region is None:
         return
@@ -239,7 +254,7 @@ def _focus(world: WorldState, power: str, params: DynamicsParams) -> None:
     if under_pressure(world, power):
         reach *= 1.0 - params["containment"]
     if state.focus_mode == "challenge":
-        return  # the standoff it starts is the action (E49)
+        return  # the standoff it starts is the action
     if state.focus_mode in ("covert", "insurgency"):
         shift_influence(world, state.focus_region, power, params["covert_rate"] * reach * DT)
         region = world.regions[state.focus_region]
