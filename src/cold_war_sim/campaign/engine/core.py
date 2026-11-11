@@ -1,310 +1,57 @@
-"""The campaign engine: an explicit, deep-copyable quarter-by-quarter state machine.
-
-Quarter phases::
-
-    BEGIN -> DIRECTOR -> STRATEGIC (Q1 only) -> SUBGAMES -> RESOLVE
-          -> DYNAMICS -> REWARDS -> END
-
-``advance`` runs phases until the next decision belongs to an agent power
-(NPC powers, NPC roles and single-option requests resolve inline) or the
-campaign ends. ``act`` answers the pending decision and advances again.
-Major events above ``EngineConfig.playable_tier`` run on rails: every role
-plays its historical choices and chance follows the historical draws, so the
-event still fires under its condition but never asks an agent. Decision events
-(one power's choice among options) are put to their power in the strategic
-phase and take effect in RESOLVE. When a leader changes, running attrition wars
-whose roles include that power are re-bound at the current world.
-All mutable data lives in :class:`EngineState`, so a snapshot is one
-``deepcopy``; the catalog and cached baselines are shared, immutable inputs.
-"""
+"""Advance the campaign through quarterly decisions, event play and world changes."""
 
 from __future__ import annotations
 
 import copy
-import warnings
-from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
-from ..families import attrition, bargaining, build_family
-from ..families.attrition_beliefs import AttritionBeliefPolicy, choose
-from ..families.crisis_beliefs import CrisisBeliefPolicy
-from ..games import CHANCE, Policy, TabularPolicy, build_tree, sample_action, tabular_from_tree
-from ..games.algorithms import backward_induction, cfr_plus, logit_qre
-from ..games.traverse import GameTree, TreePolicy
-from . import (
-    assumptions,
-    calendar,
-    derive,
-    generator,
-    goals,
-    observation,
-    rewards,
-    standing,
-    strategic,
+from ...families import attrition, bargaining, build_family
+from ...families.attrition import EFFORT, choose
+from ...games import CHANCE, TabularPolicy, sample_action
+from .. import assumptions
+from ..catalog.core import Catalog, MajorSpec, load_catalog
+from ..catalog.effects import EffectContext
+from ..decisions import strategic
+from ..decisions.policies import CampaignPolicy, HistoricalPolicy, make_policy
+from ..decisions.reference_play import QRE_TOLERANCE, baseline_policy, reference_tree_policy
+from ..decisions.requests import DecisionRequest, Option
+from ..environments import observation
+from ..events import generator
+from ..events.director import run_director
+from ..payoffs import derive, goals, rewards, standing
+from ..world import calendar
+from ..world.dynamics import DynamicsParams, step
+from ..world.state import IDENTITIES, POWERS, WorldState, identity, seat
+from .reproducibility import stable_hash, stream
+from .state import (
+    CHANCE_MODES,
+    REWARD_MODES,
+    ActiveEvent,
+    EngineConfig,
+    EngineState,
+    EpisodeResult,
+    ExpectedReturns,
+    PendingDecision,
+    Phase,
 )
-from .catalog import Catalog, MajorSpec, load_catalog
-from .decisions import DecisionRequest, Option
-from .director import run_director
-from .dynamics import DynamicsParams, step
-from .effects import EffectContext
-from .policies import CampaignPolicy, HistoricalPolicy, make_policy
-from .rng import stream
-from .serialization import canonical_json, stable_hash
-from .state import IDENTITIES, POWERS, WorldState, identity, seat
 
-CHANCE_MODES = ("sample", "historical")
-REWARD_MODES = ("goals", "score")  # goals: docs/GOALS.md; score: the pre-goals world score
-EFFORT = {"withdraw": 0.0, "low": 1 / 3, "negotiate": 1 / 3, "high": 2 / 3, "direct": 1.0}
-
-
-class Phase(StrEnum):
-    BEGIN = "begin"
-    DIRECTOR = "director"
-    STRATEGIC = "strategic"
-    SUBGAMES = "subgames"
-    RESOLVE = "resolve"
-    DYNAMICS = "dynamics"
-    REWARDS = "rewards"
-    END = "end"
-    DONE = "done"
-
-
-@dataclass(frozen=True)
-class EngineConfig:
-    agents: tuple[str, ...] = POWERS
-    chance_mode: str = "sample"
-    npc_policy: str = "historical"
-    baseline_iterations: int = 300
-    # computer-run reference play is a logit (quantal) response at this temperature, in
-    # payoff units: near-ties become mixtures (user decision 2026-10-11); 0 = exact
-    baseline_temperature: float = 0.1
-    end_quarter: int = calendar.END
-    playable_tier: int | None = None  # None: every major event is playable
-    reward: str = "goals"
-    # draw the catalog's numbers within the assumptions register's ranges at each reset
-    # (user decision 7, 2026-10-14); None: the catalog's own values
-    sampling: assumptions.Sampling | None = None
-    # single-event scenarios (user, 2026-10-20; campaign/scenario.py): snapshot the state
-    # when a listed event starts (``CampaignEngine.captured``), and with a scope ask agents
-    # only inside that event and stop once it resolves
-    capture: frozenset[str] = frozenset()
-    scope: str | None = None
-    # the crisis generator (data/generator.yaml, E49): crises where the world makes them
-    # likely; never with historical chance, whose replay has only named crises
-    generator: bool = False
-    # how events above playable_tier run: "historical" (their documented choices and
-    # chance) or "reference" (computer-run reference play and sampled chance, E49), so a
-    # world that has left history is not pulled back to it (WRITEUP 6.5, hindsight 2)
-    rails: str = "historical"
-    # scenario training (E50): in the scoped event (instant cadence, sampled chance), the
-    # stretches of chance and computer-run choices are expanded and their terminal
-    # payoffs taken in expectation, while the sampled path goes on to the next agent
-    # decision with a survival weight (ExpectedReturns): rare catastrophes stop swamping
-    # the learner's advantages
-    chance_expected: bool = False
-
-    def __post_init__(self) -> None:
-        if not set(self.agents) <= set(POWERS):
-            raise ValueError(f"agents must be drawn from {POWERS}")
-        if self.chance_mode not in CHANCE_MODES:
-            raise ValueError(f"chance_mode must be one of {CHANCE_MODES}")
-        if not calendar.START <= self.end_quarter <= calendar.END:
-            raise ValueError("end_quarter must lie within the campaign")
-        if self.playable_tier is not None and self.playable_tier < 1:
-            raise ValueError("playable_tier must be at least 1")
-        if self.reward not in REWARD_MODES:
-            raise ValueError(f"reward must be one of {REWARD_MODES}")
-        if self.baseline_temperature < 0.0:
-            raise ValueError("baseline_temperature must be non-negative")
-        if self.rails not in ("historical", "reference"):
-            raise ValueError("rails must be historical or reference")
-        if self.chance_expected and self.chance_mode != "sample":
-            raise ValueError("chance_expected needs sampled chance")
-
-
-@dataclass(slots=True)
-class ActiveEvent:
-    event_id: str
-    seq: int
-    started: int
-    config: dict[str, Any]
-    state: Any
-    rng: np.random.Generator
-    decisions: dict[str, int] = field(default_factory=dict)
-    chance_count: int = 0
-    round_marker: int = 0
-    annual_choices: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class ExpectedReturns:
-    """The scoped event's chance-expected return (``EngineConfig.chance_expected``, E50).
-
-    At each stretch of chance and computer-run choices, the terminal leaves' payoffs
-    count in expectation and the sampled path goes on to one of the agent decisions that
-    end the stretch, drawn by its probability among them. Its weight, *survival*, is the
-    product of those decisions' total probabilities so far; an agent's estimate of its
-    return is unbiased, and its realized end counts at the weight left (0 once a stretch
-    ended in a terminal)."""
-
-    survival: float = 1.0
-    values: dict[str, float] = field(default_factory=dict)  # role -> weighted, not yet popped
-    outcomes: dict[str, float] = field(default_factory=dict)  # label -> probability mass
-
-    def add(self, values: Mapping[str, float], outcomes: Mapping[str, float]) -> None:
-        for role, value in values.items():
-            self.values[role] = self.values.get(role, 0.0) + self.survival * value
-        for label, mass in outcomes.items():
-            self.outcomes[label] = self.outcomes.get(label, 0.0) + self.survival * mass
-
-    def close(self, returns: Mapping[str, float], label: str) -> None:
-        self.add(returns, {label: 1.0})
-        self.survival = 0.0
-
-
-NATURE_NODE_CAP = 50_000  # a larger stretch is sampled step by step instead
-
-
-@dataclass(slots=True)
-class PendingDecision:
-    request: DecisionRequest
-    target: tuple[str, ...]  # ("strategy", power, stage) or ("subgame", event_id)
-
-
-@dataclass(slots=True)
-class EngineState:
-    seed: int
-    world: WorldState
-    phase: Phase = Phase.DIRECTOR
-    strategy_queue: list[tuple[str, str]] = field(default_factory=list)
-    commits: dict[str, dict[str, str]] = field(default_factory=dict)
-    order: list[str] = field(default_factory=list)
-    cursor: int = 0
-    active: dict[str, ActiveEvent] = field(default_factory=dict)
-    finished: list[tuple[int, str, Any, dict[str, float]]] = field(default_factory=list)
-    requested: set[str] = field(default_factory=set)
-    war_effort: dict[str, float] = field(default_factory=dict)
-    crisis_requests: list[str] = field(default_factory=list)  # agents' challenges (E49)
-    direct_effort: dict[str, float] = field(default_factory=dict)  # fought with own troops
-    pending: PendingDecision | None = None
-    scores: dict[str, float] = field(default_factory=dict)
-    components: dict[str, dict[str, float]] = field(default_factory=dict)  # by identity
-    reward_buffer: dict[str, float] = field(default_factory=dict)
-    eliminated: set[str] = field(default_factory=set)
-    holders: dict[str, str] = field(default_factory=dict)  # seat -> identity holding it
-    retired: set[str] = field(default_factory=set)  # identities that lost their seat
-    standing: dict[str, float] = field(default_factory=dict)  # scoreboard; never a reward
-    standing_log: list[tuple[int, str, dict[str, float]]] = field(default_factory=list)
-    seq: int = 0
-    instances: dict[str, int] = field(default_factory=dict)
-    decision_queue: list[str] = field(default_factory=list)  # decision events to put
-    decided: list[tuple[str, str]] = field(default_factory=list)  # (event, option) to apply
-    npc_rng: np.random.Generator = field(default_factory=lambda: np.random.default_rng(0))
-    truncated: bool = False
-    trace: list[dict[str, Any]] = field(default_factory=list)
-    decisions: int = 0
-    last_returns: dict[str, dict[str, float]] = field(default_factory=dict)
-    assumptions: dict[str, float] = field(default_factory=dict)  # this episode's draw
-    variant: Catalog | None = None  # the catalog with the draw applied (None: no sampling)
-    scope_done: bool = False  # the scoped event has resolved (EngineConfig.scope)
-    expected: ExpectedReturns | None = None  # EngineConfig.chance_expected (E50)
-
-
-# Baselines are pure functions of (family, bound config): cache them across
-# engines and snapshots.
-_BASELINES: OrderedDict[str, Policy] = OrderedDict()
-_BASELINE_LIMIT = 512
-# Attrition belief policies are lazy and their memos grow large, so only the latest few
-# are kept; a running war uses its policy every quarter and stays among them (E39)
-_BELIEF_POLICIES: OrderedDict[str, Policy] = OrderedDict()
-_BELIEF_LIMIT = 4
-
-
-QRE_TOLERANCE = 1e-3  # a reference QRE stopped further from its fixed point is warned about
-
-
-def _solve_tree(tree: GameTree, iterations: int, temperature: float) -> TreePolicy:
-    """Logit QRE at *temperature* > 0; otherwise backward induction with perfect
-    information, or CFR+'s average strategy (an equilibrium only in two-player zero-sum
-    games; in general-sum games it approaches a coarse correlated equilibrium)."""
-
-    if temperature > 0.0:
-        result = logit_qre(tree, temperature=temperature)
-        if result.residual > QRE_TOLERANCE:  # E52: reported, not fatal mid-campaign
-            warnings.warn(
-                f"reference QRE at temperature {temperature} stopped {result.residual:.1e} "
-                f"from its fixed point ({len(tree.nodes)} nodes)",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-        return result.policy
-    if tree.is_perfect_information:
-        return backward_induction(tree).policy
-    return cfr_plus(tree, iterations=iterations, trembles=0.01).average_policy
-
-
-def reference_tree_policy(
-    game: Any, tree: GameTree, iterations: int, temperature: float = 0.0
-) -> TreePolicy:
-    """Reference play on *tree*, the true game's tree: a crisis whose roles hold their
-    own beliefs plays each role's part of its own view (E41); otherwise the solver's
-    solution."""
-
-    if not getattr(game, "has_beliefs", False):
-        return _solve_tree(tree, iterations, temperature)
-    belief = CrisisBeliefPolicy(game, lambda view: _solve_tree(view, iterations, temperature))
-    result = []
-    for info in tree.infosets:
-        dist = belief.policy_of(tree.roles[info.role]).table.get(info.key)
-        uniform = 1.0 / len(info.actions)
-        result.append([dist.get(a, 0.0) if dist else uniform for a in info.actions])
-    return result
-
-
-def baseline_policy(
-    family: str, config: Mapping[str, Any], iterations: int, temperature: float = 0.0
-) -> Policy:
-    """The computer-run reference for a sub-game: equilibrium play (see
-    :func:`_solve_tree`), or with ``temperature > 0`` a logit quantal response
-    equilibrium (the belief-based bargaining solver stays exact)."""
-
-    key = canonical_json(
-        {"family": family, "config": config, "iterations": iterations, "temperature": temperature}
-    )
-    cache, limit = (
-        (_BELIEF_POLICIES, _BELIEF_LIMIT)
-        if family == "attrition"
-        else (_BASELINES, _BASELINE_LIMIT)
-    )
-    cached = cache.get(key)
-    if cached is not None:
-        cache.move_to_end(key)
-        return cached
-    game = build_family(family, config)
-    policy: Policy
-    if family == "bargaining":
-        policy = bargaining.BargainingEquilibriumPolicy(game, temperature)
-    elif family == "attrition":
-        policy = AttritionBeliefPolicy(game, temperature)
-    elif family == "crisis" and game.has_beliefs:  # each role solves its own view (E41)
-        policy = CrisisBeliefPolicy(game, lambda tree: _solve_tree(tree, iterations, temperature))
-    else:
-        root = game.solver_state() if hasattr(game, "solver_state") else game.new_initial_state()
-        tree = build_tree(root)
-        policy = tabular_from_tree(tree, _solve_tree(tree, iterations, temperature))
-    cache[key] = policy
-    if len(cache) > limit:
-        cache.popitem(last=False)
-    return policy
+NATURE_NODE_CAP = 50_000  # sample larger stretches of chance one step at a time
 
 
 class CampaignEngine:
-    """Engine-native API: ``reset``, ``pending``, ``act``, ``observe``, ``pop_rewards``."""
+    """Run the world until an agent needs to choose an action.
+
+    Each quarter advances through BEGIN, DIRECTOR, STRATEGIC (Q1 only),
+    SUBGAMES, RESOLVE, DYNAMICS, REWARDS and END. Computer-run choices are
+    resolved along the way. ``pending`` describes the next agent choice;
+    ``act`` applies it and continues.
+
+    Mutable campaign data lives in EngineState. ``snapshot`` copies that
+    state for later play, while the catalog and cached strategies are shared.
+    """
 
     def __init__(self, catalog: Catalog | None = None, config: EngineConfig | None = None) -> None:
         self.base_catalog = self.catalog = catalog or load_catalog()
@@ -320,6 +67,10 @@ class CampaignEngine:
 
     # ------------------------------------------------------------------ public
     def reset(self, seed: int = 0) -> None:
+        """Start a campaign from *seed* (drawing the catalog's numbers first if sampling is
+        on) and run to the first agent decision.
+        """
+
         self.captured = {}
         drawn, variant = self._sample(int(seed))
         world = self.catalog.initial_world()
@@ -339,20 +90,30 @@ class CampaignEngine:
 
     @property
     def world(self) -> WorldState:
+        """The current world."""
+
         return self.s.world
 
     @property
     def done(self) -> bool:
+        """Whether the campaign is over."""
+
         return self.s.phase == Phase.DONE
 
     @property
     def truncated(self) -> bool:
+        """Whether the campaign stopped at ``end_quarter`` before the calendar's end."""
+
         return self.s.truncated
 
     def pending(self) -> DecisionRequest | None:
+        """The request awaiting an agent's answer, if any."""
+
         return self.s.pending.request if self.s.pending is not None else None
 
     def act(self, index: int) -> None:
+        """Answer the pending request with option *index* and run to the next one."""
+
         pending = self.s.pending
         if pending is None:
             raise RuntimeError("no decision is pending")
@@ -376,6 +137,8 @@ class CampaignEngine:
         return identity(self.world, power)
 
     def observe(self, agent: str) -> np.ndarray:
+        """The observation vector of the identity *agent*."""
+
         return observation.encode(self, seat(agent))
 
     def observe_subgame(self, event_id: str, state: Any, role: str) -> np.ndarray:
@@ -394,10 +157,14 @@ class CampaignEngine:
             active.state, self.s.pending = saved
 
     def describe(self, agent: str) -> dict[str, Any]:
+        """A readable observation of the identity *agent*."""
+
         return observation.describe(self, seat(agent))
 
     def action_mask(self, agent: str) -> np.ndarray:
-        from .decisions import MAX_OPTIONS
+        """1 for each option open to *agent* now, 0 elsewhere (all 0 when it is not its turn)."""
+
+        from ..decisions.requests import MAX_OPTIONS
 
         mask = np.zeros(MAX_OPTIONS, dtype=np.int8)
         request = self.pending()
@@ -417,9 +184,13 @@ class CampaignEngine:
         return result
 
     def snapshot(self) -> EngineState:
+        """A deep copy of the engine's state."""
+
         return copy.deepcopy(self.s)
 
     def restore(self, snapshot: EngineState) -> None:
+        """Continue from a *snapshot* (under the catalog variant it was taken with)."""
+
         self.s = copy.deepcopy(snapshot)
         catalog = self.s.variant or self.base_catalog
         if catalog is not self.catalog:
@@ -449,9 +220,13 @@ class CampaignEngine:
         return values, variant
 
     def trace_hash(self) -> str:
+        """A hash of the campaign's trace: equal exactly when two campaigns played out alike."""
+
         return stable_hash(self.s.trace)
 
     def subgame_observation(self, event_id: str, role: str) -> tuple[float, ...]:
+        """The family's own observation of the running *event_id* for *role*."""
+
         active = self.s.active.get(event_id)
         if active is None:
             return ()
@@ -482,6 +257,8 @@ class CampaignEngine:
         return choose(values, legal, self.config.baseline_temperature)
 
     def baseline_distribution(self, request: DecisionRequest) -> dict[str, float]:
+        """Reference play's choice probabilities for *request* (a sub-game move or a decision event)."""
+
         if request.kind == "event_decision":
             return self.decision_distribution(request)
         active = self.s.active.get(request.source)
@@ -520,55 +297,101 @@ class CampaignEngine:
 
     # ----------------------------------------------------------------- phases
     def _advance(self) -> None:
+        """Run phases until an agent must decide or the campaign is over."""
+
         s = self.s
         while s.pending is None and s.phase != Phase.DONE:
-            if s.phase == Phase.BEGIN:
-                s.world.quarter += 1
-                s.phase = Phase.DIRECTOR
-            elif s.phase == Phase.DIRECTOR:
-                self._director()
-                if s.world.ended is not None:
-                    s.phase = Phase.RESOLVE
-                    continue
-                if calendar.quarter_of_year(s.world.quarter) == 1:
-                    s.strategy_queue = [
-                        (p, stage) for p in s.world.active_powers() for stage in strategic.STAGES
-                    ]
-                    s.commits = {p: {} for p in s.world.active_powers()}
-                s.phase = Phase.STRATEGIC
-                if self.config.capture:
-                    self._capture()
-            elif s.phase == Phase.STRATEGIC:
-                if self._run_decisions() and self._run_strategy():
-                    s.order = sorted(s.active, key=lambda eid: s.active[eid].seq)
-                    s.cursor = 0
-                    s.war_effort = dict.fromkeys(POWERS, 0.0)
-                    s.direct_effort = dict.fromkeys(POWERS, 0.0)
-                    s.phase = Phase.SUBGAMES
-            elif s.phase == Phase.SUBGAMES:
-                if self._run_subgames():
-                    s.phase = Phase.RESOLVE
-            elif s.phase == Phase.RESOLVE:
-                self._resolve()
-                s.phase = Phase.DYNAMICS
-            elif s.phase == Phase.DYNAMICS:
-                if s.world.ended is None:
-                    step(s.world, self.dynamics, s.war_effort, s.direct_effort)
-                s.phase = Phase.REWARDS
-            elif s.phase == Phase.REWARDS:
-                self._rewards()
-                s.phase = Phase.END
-            elif s.phase == Phase.END:
-                if s.scope_done:
-                    s.phase = Phase.DONE
-                elif s.world.ended is not None or s.world.quarter >= self.config.end_quarter:
-                    if s.world.ended is None and self.config.end_quarter < calendar.END:
-                        s.truncated = True
-                    s.phase = Phase.DONE
-                else:
-                    s.phase = Phase.BEGIN
+            self._PHASES[s.phase](self)
+
+    def _phase_begin(self) -> None:
+        """A new quarter starts."""
+
+        self.s.world.quarter += 1
+        self.s.phase = Phase.DIRECTOR
+
+    def _phase_director(self) -> None:
+        """Events fire; in the first quarter of a year the strategy turns are queued."""
+
+        s = self.s
+        self._director()
+        if s.world.ended is not None:
+            s.phase = Phase.RESOLVE
+            return
+        if calendar.quarter_of_year(s.world.quarter) == 1:
+            s.strategy_queue = [
+                (p, stage) for p in s.world.active_powers() for stage in strategic.STAGES
+            ]
+            s.commits = {p: {} for p in s.world.active_powers()}
+        s.phase = Phase.STRATEGIC
+        if self.config.capture:
+            self._capture()
+
+    def _phase_strategic(self) -> None:
+        """Decision events and strategy turns are put; the phase holds while one is pending."""
+
+        s = self.s
+        if self._run_decisions() and self._run_strategy():
+            s.order = sorted(s.active, key=lambda eid: s.active[eid].seq)
+            s.cursor = 0
+            s.war_effort = dict.fromkeys(POWERS, 0.0)
+            s.direct_effort = dict.fromkeys(POWERS, 0.0)
+            s.phase = Phase.SUBGAMES
+
+    def _phase_subgames(self) -> None:
+        """Running events play this quarter's moves, in the order they started."""
+
+        if self._run_subgames():
+            self.s.phase = Phase.RESOLVE
+
+    def _phase_resolve(self) -> None:
+        """Finished events' outcomes, the year's strategy and decisions take effect."""
+
+        self._resolve()
+        self.s.phase = Phase.DYNAMICS
+
+    def _phase_dynamics(self) -> None:
+        """The world moves one quarter under the dynamics."""
+
+        s = self.s
+        if s.world.ended is None:
+            step(s.world, self.dynamics, s.war_effort, s.direct_effort)
+        s.phase = Phase.REWARDS
+
+    def _phase_rewards(self) -> None:
+        """Each identity is paid the change in its goal score."""
+
+        self._rewards()
+        self.s.phase = Phase.END
+
+    def _phase_end(self) -> None:
+        """The campaign ends with its scope, the world or the calendar; else the next quarter."""
+
+        s = self.s
+        if s.scope_done:
+            s.phase = Phase.DONE
+        elif s.world.ended is not None or s.world.quarter >= self.config.end_quarter:
+            if s.world.ended is None and self.config.end_quarter < calendar.END:
+                s.truncated = True
+            s.phase = Phase.DONE
+        else:
+            s.phase = Phase.BEGIN
+
+    _PHASES: ClassVar[dict[Phase, Callable[[CampaignEngine], None]]] = {
+        Phase.BEGIN: _phase_begin,
+        Phase.DIRECTOR: _phase_director,
+        Phase.STRATEGIC: _phase_strategic,
+        Phase.SUBGAMES: _phase_subgames,
+        Phase.RESOLVE: _phase_resolve,
+        Phase.DYNAMICS: _phase_dynamics,
+        Phase.REWARDS: _phase_rewards,
+        Phase.END: _phase_end,
+    }
 
     def _director(self) -> None:
+        """Run the director: start the events that fire, queue decision events, and re-bind
+        running wars whose powers changed leader.
+        """
+
         s = self.s
         requested = set(s.requested)
         s.requested.clear()
@@ -633,6 +456,10 @@ class CampaignEngine:
             s.trace.append({"q": calendar.fmt(s.world.quarter), "rebind": event_id})
 
     def _instantiate(self, event_id: str) -> None:
+        """Start major event *event_id*: bind its config at the current world, build its
+        game, and drop the optional roles whose condition fails.
+        """
+
         s = self.s
         major = self.catalog.events[event_id].major
         assert major is not None
@@ -658,6 +485,8 @@ class CampaignEngine:
 
     # --------------------------------------------------------------- strategy
     def _run_strategy(self) -> bool:
+        """Put the year's strategy turns in order; returns False while one awaits an agent."""
+
         s = self.s
         while s.strategy_queue:
             power, stage = s.strategy_queue[0]
@@ -685,6 +514,8 @@ class CampaignEngine:
         return True
 
     def _run_decisions(self) -> bool:
+        """Put the queued decision events to their powers; returns False while one awaits an agent."""
+
         s = self.s
         while s.decision_queue:
             event = self.catalog.events[s.decision_queue[0]]
@@ -710,6 +541,8 @@ class CampaignEngine:
         return True
 
     def _commit_decision(self, request: DecisionRequest, index: int, *, agent: bool) -> None:
+        """Record the option chosen for a decision event; it takes effect in RESOLVE."""
+
         s = self.s
         event_id = s.decision_queue.pop(0)
         option = request.options[index].id
@@ -720,6 +553,8 @@ class CampaignEngine:
         s.trace.append({"q": calendar.fmt(s.world.quarter), "decision": event_id, "c": option})
 
     def _commit_strategy(self, request: DecisionRequest, index: int, *, agent: bool) -> None:
+        """Record a strategy choice; the year's choices take effect together in RESOLVE."""
+
         s = self.s
         power, stage = s.strategy_queue.pop(0)
         s.commits[power][stage] = request.options[index].id
@@ -735,20 +570,27 @@ class CampaignEngine:
             )
 
     def _asks(self, power: str, event_id: str | None = None) -> bool:
-        """Whether *power*'s decision goes to its agent: an agent power, and with a scope
-        only inside the scoped event."""
+        """Return whether this choice belongs to an agent.
+
+        In a single-event scenario, agents choose only within that event.
+        """
 
         if power not in self.config.agents:
             return False
         return self.config.scope is None or event_id == self.config.scope
 
     # --------------------------------------------------------------- subgames
+
     def on_rails(self, major: MajorSpec) -> bool:
+        """Whether *major* is above the playable tier and so is played without asking agents."""
+
         limit = self.config.playable_tier
         return limit is not None and major.tier > limit
 
     @staticmethod
     def _round_marker(state: Any) -> int:
+        """The round of a game that runs over several quarters (0 for an instant one)."""
+
         if isinstance(state, attrition.AttritionState):
             return state.round
         if isinstance(state, bargaining.BargainingState):
@@ -756,6 +598,8 @@ class CampaignEngine:
         return 0
 
     def _run_subgames(self) -> bool:
+        """Advance each running event through this quarter; returns False while one awaits an agent."""
+
         s = self.s
         while s.cursor < len(s.order):
             active = s.active.get(s.order[s.cursor])
@@ -832,11 +676,12 @@ class CampaignEngine:
             and len(state.legal_actions()) > 1
         )
 
-    # ------------------------------------------------- chance-expected returns (E50)
     def expects_scope(self) -> bool:
-        """Whether the scoped event's returns are counted in expectation: with
-        ``chance_expected``, an instant event only; a war or talks over several quarters
-        keeps its sampled ending (E52)."""
+        """Return whether the scenario averages over chance outcomes.
+
+        This requires ``chance_expected`` and an event that ends within one quarter.
+        Wars and talks spanning several quarters keep their sampled outcomes.
+        """
 
         scope = self.config.scope
         active = self.s.active.get(scope) if scope is not None else None
@@ -846,6 +691,8 @@ class CampaignEngine:
         return major is not None and self._expects(active, major)
 
     def _expects(self, active: ActiveEvent, major: MajorSpec) -> bool:
+        """Whether *active* is the scoped instant event whose chance is taken in expectation."""
+
         return (
             self.config.chance_expected
             and active.event_id == self.config.scope
@@ -854,12 +701,17 @@ class CampaignEngine:
         )
 
     def _follow_expected(self, active: ActiveEvent) -> bool:
-        """Expand the stretch of chance and computer-run choices from *active*'s state to
-        its terminals and agent decisions, count the terminals in expectation, and follow
-        a path to one agent decision drawn by its probability among them (to a terminal
-        drawn by its probability when the stretch has no agent decision). False, with
-        nothing changed, when the stretch is too large or a computer-run role's
-        probabilities are unknown (then the step is sampled as usual)."""
+        """Average the outcomes before the next agent choice, then sample a path onward.
+
+        Explore chance and computer-run choices until each path ends or reaches an
+        agent. Add ending payoffs weighted by their probabilities. If any paths reach
+        an agent, choose among them in proportion to their probabilities and multiply
+        the survival weight by their total probability. Otherwise, sample an ending.
+
+        Return False without changing the event if the search exceeds the node limit
+        or a computer-run policy does not provide probabilities; ordinary sampling
+        then handles the next step.
+        """
 
         values: dict[str, float] = {}
         outcomes: dict[str, float] = {}
@@ -930,6 +782,8 @@ class CampaignEngine:
     def _subgame_request(
         self, active: ActiveEvent, role: str, legal: tuple[str, ...]
     ) -> DecisionRequest:
+        """The request for *role*'s move in a running event, with the historical option marked."""
+
         major = self.catalog.events[active.event_id].major
         assert major is not None
         history = major.plan(active.started)[0].get(role, ())
@@ -949,6 +803,8 @@ class CampaignEngine:
     def _apply_subgame_choice(
         self, active: ActiveEvent, request: DecisionRequest, index: int, *, agent: bool
     ) -> None:
+        """Apply the chosen option to the event's game and record it in the trace."""
+
         s = self.s
         role = request.role
         assert role is not None
@@ -966,6 +822,10 @@ class CampaignEngine:
         )
 
     def _chance(self, active: ActiveEvent) -> str:
+        """The chance outcome at the event's chance node: the historical draw in historical
+        mode or on historical rails, else a draw from the event's own stream.
+        """
+
         outcomes = active.state.chance_outcomes()
         major = self.catalog.events[active.event_id].major
         assert major is not None
@@ -981,6 +841,8 @@ class CampaignEngine:
         return sample_action(dict(outcomes), active.rng)
 
     def _record_war_effort(self, active: ActiveEvent) -> None:
+        """Add each power's effort in this round of a war to the quarter's war effort."""
+
         state = active.state
         if not isinstance(state, attrition.AttritionState):
             return
@@ -991,7 +853,7 @@ class CampaignEngine:
                     self.s.direct_effort[role] = self.s.direct_effort.get(role, 0.0) + 1.0
 
     def _started_crisis(self, power: str, commits: Mapping[str, str]) -> str | None:
-        """The generated crisis an agent's challenge or insurgency starts (E49)."""
+        """The generated crisis an agent's challenge or insurgency starts."""
 
         mode, region = commits.get("mode"), commits.get("region", "none")
         if mode not in ("challenge", "insurgency") or region == "none":
@@ -1002,8 +864,11 @@ class CampaignEngine:
         template = "standoff" if mode == "challenge" else "proxy_war"
         return generator.event_id(template, region, (leader, power))
 
-    # ---------------------------------------------------------------- resolve
     def _resolve(self) -> None:
+        """Apply what the quarter decided: strategy choices, decision events' options, and
+        the outcome effects and standing changes of the events that finished.
+        """
+
         s = self.s
         world = s.world
         for power, commits in s.commits.items():
@@ -1071,6 +936,8 @@ class CampaignEngine:
         s.finished = []
 
     def _record_standing(self, event_id: str, changes: dict[str, float]) -> None:
+        """Add *changes* to the standing scoreboard and its log."""
+
         if not changes:
             return
         for ident, change in changes.items():
@@ -1089,11 +956,15 @@ class CampaignEngine:
         held = (
             0.0
             if parts is None
-            else goals.combine(parts, goals.row(self.world, ident, self.catalog).weights)
+            else goals.combine(parts, goals.row(self.s.world, ident, self.catalog).weights)
         )
         return max(held, float(settings.get("loss_floor", 0.1)))
 
     def _rewards(self) -> None:
+        """Pay each identity the change in its goal score (or in the world score), with the
+        terminal terms, and hand a seat that changed regime to its new identity.
+        """
+
         s = self.s
         world = s.world
         new_scores = rewards.scores(world, self.catalog)
@@ -1125,20 +996,6 @@ class CampaignEngine:
             terminal = rewards.terminal_bonus(world, self.catalog, end_bonuses=score_mode)
             for p, bonus in terminal.items():
                 s.reward_buffer[identity(world, p)] += bonus
-
-
-@dataclass
-class EpisodeResult:
-    seed: int
-    end_reason: str
-    final_quarter: str
-    decisions: int
-    returns: dict[str, float]
-    timeline: list[tuple[str, str, str]]
-    outcomes: dict[str, str]
-    trace_hash: str
-    standing: dict[str, float] = field(default_factory=dict)
-    assumptions: dict[str, float] = field(default_factory=dict)  # the episode's draw, if any
 
 
 def run_episode(
@@ -1183,11 +1040,21 @@ def run_episode(
 
 
 __all__ = [
+    "CHANCE_MODES",
+    "EFFORT",
+    "NATURE_NODE_CAP",
+    "QRE_TOLERANCE",
+    "REWARD_MODES",
+    "ActiveEvent",
     "CampaignEngine",
     "EngineConfig",
+    "EngineState",
     "EpisodeResult",
+    "ExpectedReturns",
+    "PendingDecision",
     "Phase",
     "TabularPolicy",
     "baseline_policy",
+    "reference_tree_policy",
     "run_episode",
 ]

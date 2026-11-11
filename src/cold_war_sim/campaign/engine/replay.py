@@ -7,11 +7,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .engine import CampaignEngine, EpisodeResult
-from .serialization import canonical_json
+from .core import CampaignEngine, EpisodeResult
+from .reproducibility import canonical_json
 
 
 def episode_record(engine: CampaignEngine, result: EpisodeResult) -> dict[str, Any]:
+    """A campaign as a JSON-ready record: its configuration, result and trace."""
+
     return {
         "seed": result.seed,
         "config": {
