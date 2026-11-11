@@ -12,7 +12,7 @@ from .protocol import (
     LoggedState,
     Outcome,
 )
-from .traverse import GameTree, TreePolicy, build_tree, expected_returns, outcome_distribution
+from .tree import GameTree, TreePolicy, build_tree, expected_returns, outcome_distribution
 
 __all__ = [
     "CHANCE",

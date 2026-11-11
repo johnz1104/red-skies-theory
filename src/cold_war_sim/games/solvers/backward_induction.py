@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from ..traverse import CHANCE_NODE, TERMINAL_NODE, GameTree, TreePolicy
+from ...records import Record
+from ..tree import CHANCE_NODE, TERMINAL_NODE, GameTree, TreePolicy, expectation
 
 DEFAULT_TOLERANCE = 1e-10
 
@@ -13,26 +12,33 @@ class NotPerfectInformationError(ValueError):
     """Raised when an information set contains more than one history."""
 
 
-@dataclass(frozen=True, slots=True)
-class BackwardInductionResult:
-    """A subgame-perfect pure policy and the value vector at each node.
+class BackwardInductionResult(Record):
+    """A subgame-perfect pure profile with the value vector at every node.
 
-    Ties are broken toward the earliest action in declared order, which makes
-    the selected equilibrium deterministic and reproducible.
+    Ties go to the earliest action in declared order, so the selected equilibrium is
+    deterministic; ``ties`` counts the comparisons that tied.
     """
 
-    policy: TreePolicy
-    values: dict[str, float]
-    node_values: tuple[tuple[float, ...], ...]
-    ties: int
+    def __init__(
+        self,
+        policy: TreePolicy,
+        values: dict[str, float],
+        node_values: tuple[tuple[float, ...], ...],
+        ties: int,
+    ) -> None:
+        self.policy = policy
+        self.values = values  # each role's value at the root
+        self.node_values = node_values
+        self.ties = ties
 
 
 def backward_induction(
     tree: GameTree, *, tolerance: float = DEFAULT_TOLERANCE
 ) -> BackwardInductionResult:
+    """The subgame-perfect equilibrium of *tree*: each mover takes its best child, bottom-up."""
+
     if not tree.is_perfect_information:
         raise NotPerfectInformationError("backward induction requires perfect information")
-    n_roles = len(tree.roles)
     values: list[tuple[float, ...]] = [()] * len(tree.nodes)
     policy: TreePolicy = [[0.0] * len(info.actions) for info in tree.infosets]
     ties = 0
@@ -42,11 +48,7 @@ def backward_induction(
             values[idx] = node.returns
             continue
         if node.kind == CHANCE_NODE:
-            acc = [0.0] * n_roles
-            for prob, child in zip(node.probs, node.children, strict=True):
-                for r in range(n_roles):
-                    acc[r] += prob * values[child][r]
-            values[idx] = tuple(acc)
+            values[idx] = expectation(node.probs, node.children, values)
             continue
         best_slot = 0
         best_value = values[node.children[0]][node.player]

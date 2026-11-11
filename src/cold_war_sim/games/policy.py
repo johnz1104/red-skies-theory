@@ -8,30 +8,36 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 
 from .protocol import CHANCE, TERMINAL, GameState
-from .traverse import GameTree, TreePolicy
+from .tree import GameTree, TreePolicy
 
 
 @runtime_checkable
 class Policy(Protocol):
-    """Distribution over the current player's legal actions."""
+    """A behaviour strategy: a distribution over the mover's legal actions at a state."""
 
-    def action_probabilities(self, state: GameState) -> dict[str, float]: ...
+    def action_probabilities(self, state: GameState) -> dict[str, float]:
+        """The probability of each legal action at *state*."""
+        ...
 
 
 class UniformRandomPolicy:
+    """The strategy that mixes uniformly over the legal actions."""
+
     def action_probabilities(self, state: GameState) -> dict[str, float]:
         legal = state.legal_actions()
         return {action: 1.0 / len(legal) for action in legal}
 
 
 class TabularPolicy:
-    """Policy keyed by information state; unknown states fall back to uniform."""
+    """A behaviour strategy tabulated by information state; uniform where it has no entry."""
 
     def __init__(self, table: Mapping[Hashable, Mapping[str, float]]) -> None:
         self._table = {key: dict(dist) for key, dist in table.items()}
 
     @property
     def table(self) -> dict[Hashable, dict[str, float]]:
+        """Information state -> action -> probability."""
+
         return self._table
 
     def action_probabilities(self, state: GameState) -> dict[str, float]:
@@ -46,6 +52,8 @@ class TabularPolicy:
 
 
 def tabular_from_tree(tree: GameTree, policy: TreePolicy) -> TabularPolicy:
+    """*policy* on *tree* as a policy over live states, keyed by information state."""
+
     table = {
         info.key: dict(zip(info.actions, policy[idx], strict=True))
         for idx, info in enumerate(tree.infosets)
@@ -54,7 +62,8 @@ def tabular_from_tree(tree: GameTree, policy: TreePolicy) -> TabularPolicy:
 
 
 def sample_action(distribution: Mapping[str, float], rng: np.random.Generator) -> str:
-    """Sample one action; the final action absorbs floating-point residue."""
+    """One action drawn from *distribution* by inverse CDF; the last action of positive
+    probability absorbs floating-point residue."""
 
     u = float(rng.random())
     cumulative = 0.0

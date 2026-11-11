@@ -1,42 +1,45 @@
-"""Logit quantal response equilibrium (agent form) on explicit game trees.
+"""Logit quantal response equilibrium on explicit game trees.
 
-Players choose noisily: at every information set the probability of an action
-is proportional to ``exp(value / temperature)``, where the value is the
-action's expected return to the acting player given everyone's (noisy) play.
-Small temperatures approach best responses; large ones approach uniform play.
-Near-ties become genuine mixtures instead of all-or-nothing choices
-(McKelvey and Palfrey 1995, 1998).
-
-With perfect information one bottom-up pass is exact (logit backward
-induction). Otherwise the fixed point is followed along the QRE path from a hot
-start (near-uniform play) down to the target temperature, each step by damped
-iteration: the action values at an information set are its nodes' child values
-weighted by the counterfactual reach of each node (the probability of getting
-there if the acting player had steered toward it).
-
-Convergence is judged by the fixed-point **residual**, the largest gap between the
-policy and the logit response to it, never by the size of a damped step: with the
-damping at its floor a step is 200 times smaller than the gap (E52: Kuhn poker at
-0.1 stopped with steps of 0.001 and a gap of 0.2).
+At each information set, actions have probabilities proportional to
+``exp(value / temperature)``. Value is the expected payoff given everyone's
+current play. Low temperatures favor the best actions; high temperatures
+make choices more uniform (McKelvey and Palfrey 1995, 1998).
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
 
-from ..traverse import CHANCE_NODE, DECISION, TERMINAL_NODE, GameTree, TreePolicy, node_values
+from ...records import Record
+from ..tree import (
+    DECISION,
+    TERMINAL_NODE,
+    GameTree,
+    TreePolicy,
+    counterfactual_reach,
+    expectation,
+    node_values,
+    uniform_policy,
+)
 
 
-@dataclass(frozen=True, slots=True)
-class QREResult:
-    policy: TreePolicy
-    iterations: int
-    residual: float  # the policy's largest gap to its own logit response (0 when exact)
+class QREResult(Record):
+    """A profile with its distance from the logit fixed point.
+
+    ``residual`` is the largest gap between the profile and the logit response to it (0
+    when the solution is exact).
+    """
+
+    def __init__(self, policy: TreePolicy, iterations: int, residual: float) -> None:
+        self.policy = policy
+        self.iterations = iterations
+        self.residual = residual
 
 
 def softmax(values: Sequence[float], temperature: float) -> list[float]:
+    """The logit choice probabilities exp(v / temperature), normalized."""
+
     top = max(values)
     weights = [math.exp((v - top) / temperature) for v in values]
     total = sum(weights)
@@ -44,50 +47,33 @@ def softmax(values: Sequence[float], temperature: float) -> list[float]:
 
 
 def _logit_backward(tree: GameTree, temperature: float) -> TreePolicy:
+    """The exact QRE of a perfect-information tree: logit backward induction."""
+
     policy: TreePolicy = [[0.0] * len(info.actions) for info in tree.infosets]
-    n_roles = len(tree.roles)
     values: list[tuple[float, ...]] = [()] * len(tree.nodes)
     for idx in range(len(tree.nodes) - 1, -1, -1):
         node = tree.nodes[idx]
         if node.kind == TERMINAL_NODE:
             values[idx] = node.returns
             continue
-        if node.kind == CHANCE_NODE:
-            weights: Sequence[float] = node.probs
-        else:
+        weights: Sequence[float] = node.probs
+        if node.kind == DECISION:
             weights = softmax([values[c][node.player] for c in node.children], temperature)
             policy[node.infoset] = list(weights)
-        acc = [0.0] * n_roles
-        for weight, child in zip(weights, node.children, strict=True):
-            for r in range(n_roles):
-                acc[r] += weight * values[child][r]
-        values[idx] = tuple(acc)
+        values[idx] = expectation(weights, node.children, values)
     return policy
 
 
-def _counterfactual_reach(tree: GameTree, policy: TreePolicy, role: int) -> list[float]:
-    reach = [0.0] * len(tree.nodes)
-    reach[0] = 1.0
-    for idx, node in enumerate(tree.nodes):
-        if node.kind == TERMINAL_NODE or reach[idx] == 0.0:
-            continue
-        if node.kind == CHANCE_NODE:
-            weights: Sequence[float] = node.probs
-        elif node.player == role:
-            weights = [1.0] * len(node.children)
-        else:
-            weights = policy[node.infoset]
-        for weight, child in zip(weights, node.children, strict=True):
-            reach[child] = reach[idx] * weight
-    return reach
-
-
 def _response(tree: GameTree, policy: TreePolicy, temperature: float) -> tuple[TreePolicy, float]:
-    """The logit response to *policy* at every information set, and the residual: the
-    largest gap between the two."""
+    """The logit response to *policy* at every information set, and the residual.
+
+    An action's value at an information set is its nodes' child values weighted by each
+    node's counterfactual reach. The residual is the largest gap between the response
+    and *policy*.
+    """
 
     values = node_values(tree, policy)
-    reaches = [_counterfactual_reach(tree, policy, r) for r in range(len(tree.roles))]
+    reaches = [counterfactual_reach(tree, policy, r) for r in range(len(tree.roles))]
     residual = 0.0
     response: TreePolicy = []
     for index, info in enumerate(tree.infosets):
@@ -131,9 +117,14 @@ def _iterate(
     damping: float,
     tolerance: float,
 ) -> tuple[TreePolicy, float, int]:
-    """Damped fixed-point iteration at one temperature, until the residual falls below
-    *tolerance* or *iterations* steps are used; the damping halves whenever the residual
-    grows (an oscillation). Returns the policy with its own residual."""
+    """Iterate toward a logit equilibrium at one temperature.
+
+    Stop when ``max |pi - logit_response(pi)| < tolerance`` or the iteration
+    limit is reached. Here pi is the policy and the response is its implied
+    logit choice probabilities. Measure this gap before damping: a small update
+    can occur while the policy remains far from equilibrium. Halve the damping
+    when the gap grows, down to 0.005. Return the policy and its own residual.
+    """
 
     previous, done = math.inf, 0
     while True:
@@ -150,6 +141,19 @@ def _iterate(
         done += 1
 
 
+def _cooling_schedule(tree: GameTree, temperature: float, steps: int) -> list[float]:
+    """Temperatures from the payoff range (near-uniform play) down to *temperature*,
+    geometrically spaced."""
+
+    payoffs = [r for n in tree.nodes if n.kind == TERMINAL_NODE for r in n.returns]
+    span = max(payoffs) - min(payoffs) if payoffs else 1.0
+    hot = max(temperature, span)
+    count = max(1, steps) if hot > temperature else 1
+    schedule = [hot * (temperature / hot) ** (k / max(1, count - 1)) for k in range(count)]
+    schedule[-1] = temperature
+    return schedule
+
+
 def logit_qre(
     tree: GameTree,
     *,
@@ -163,12 +167,11 @@ def logit_qre(
 ) -> QREResult:
     """Agent-form logit QRE of *tree* at *temperature* (in payoff units).
 
-    Imperfect information: follow the QRE path from a hot start (near-uniform
-    play, at the payoff range) down to *temperature* in *steps* geometric steps,
-    each solved by damped iteration from the last: the path's steps only warm-start
-    the next (at most *iterations* each, to *path_tolerance*), and the target
-    temperature is solved to *tolerance* in at most *final_iterations*. The result's
-    residual is the returned policy's own; callers judge convergence by it.
+    With perfect information one bottom-up pass is exact. Otherwise the fixed point is
+    followed along the QRE path, cooling in *steps* geometric steps: each step warm-starts
+    the next (at most *iterations* each, to *path_tolerance*), and the target temperature
+    is solved to *tolerance* in at most *final_iterations*. The result's residual is the
+    returned policy's own; callers judge convergence by it.
     """
 
     if temperature <= 0.0:
@@ -177,13 +180,8 @@ def logit_qre(
         raise ValueError("damping must lie in (0, 1]")
     if tree.is_perfect_information:
         return QREResult(_logit_backward(tree, temperature), 1, 0.0)
-    payoffs = [r for n in tree.nodes if n.kind == TERMINAL_NODE for r in n.returns]
-    span = max(payoffs) - min(payoffs) if payoffs else 1.0
-    hot = max(temperature, span)
-    count = max(1, steps) if hot > temperature else 1
-    schedule = [hot * (temperature / hot) ** (k / max(1, count - 1)) for k in range(count)]
-    schedule[-1] = temperature
-    policy: TreePolicy = [[1.0 / len(info.actions)] * len(info.actions) for info in tree.infosets]
+    schedule = _cooling_schedule(tree, temperature, steps)
+    policy = uniform_policy(tree)
     residual, total = math.inf, 0
     for k, step_temperature in enumerate(schedule):
         final = k == len(schedule) - 1
