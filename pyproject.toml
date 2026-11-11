@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cold-war-campaign = "cold_war_sim.campaign.cli:main"
+cold-war-campaign = "cold_war_sim.cli.main:main"
 
 [project.optional-dependencies]
 dev = [
@@ -49,8 +49,13 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# D100, D101, D103: every public module, class and function has a docstring (methods may
+# rely on the class they override)
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "D100", "D101", "D103"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D101", "D103"]
 
 [tool.mypy]
 python_version = "3.11"

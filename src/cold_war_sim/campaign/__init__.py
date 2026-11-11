@@ -1,11 +1,11 @@
 """The 1945-1991 campaign: world state, event catalog, engine and environment."""
 
-from .catalog import Catalog, CatalogError, load_catalog
-from .decisions import MAX_OPTIONS, DecisionRequest, Option
-from .engine import CampaignEngine, EngineConfig, EpisodeResult, run_episode
-from .env import ColdWarEnv
-from .policies import EquilibriumPolicy, HistoricalPolicy, RandomPolicy, make_policy
-from .state import POWERS, REGIONS, WorldState
+from .catalog.core import Catalog, CatalogError, load_catalog
+from .decisions.policies import EquilibriumPolicy, HistoricalPolicy, RandomPolicy, make_policy
+from .decisions.requests import MAX_OPTIONS, DecisionRequest, Option
+from .engine.core import CampaignEngine, EngineConfig, EpisodeResult, run_episode
+from .environments.campaign import ColdWarEnv
+from .world.state import POWERS, REGIONS, WorldState
 
 __all__ = [
     "MAX_OPTIONS",
