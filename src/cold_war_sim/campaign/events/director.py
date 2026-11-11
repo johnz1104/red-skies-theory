@@ -1,40 +1,54 @@
 """Event director: decides which events fire each quarter.
 
-Candidates are scanned in (priority desc, id) order. A candidate fires when
-it has not fired before (unless ``once`` is false), no event it excludes has
-fired, it is inside its window, its condition holds, and its hazard draw
-passes. Cutscenes apply their effects immediately; because those effects (or
-a newly started major event) can make other conditions true, the scan repeats
-up to ``MAX_PASSES`` times.
-Major events are returned for instantiation after the cascade, and decision
-events for the engine to put to their power.
-
-An event requested by a ``start_event`` effect fires at the next director
-phase regardless of window, condition and hazard (``once`` and exclusions
-still apply).
+Candidates are scanned in (priority desc, id) order. Cutscenes apply their effects at
+once; because those effects, or a newly started major event, can make other conditions
+true, the scan repeats up to ``MAX_PASSES`` times. Major events are returned for
+instantiation after the cascade, and decision events for the engine to put to their
+power.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from .catalog import Catalog, EventSpec
-from .effects import EffectContext
-from .rng import counter_uniform
-from .state import WorldState
+from ...records import Record
+from ..catalog.effects import EffectContext
+from ..engine.reproducibility import counter_uniform
+from ..world.state import WorldState
+
+if TYPE_CHECKING:
+    from ..catalog.core import Catalog, EventSpec
 
 MAX_PASSES = 4
 
 
-@dataclass
-class DirectorResult:
-    cutscenes: list[EventSpec]
-    majors: list[EventSpec]
-    requested: list[str]
-    decisions: list[EventSpec]
+class DirectorResult(Record):
+    """What fired in one quarter: the cutscenes applied, the major and decision events to
+    start, and the events their effects requested for the next quarter.
+    """
+
+    def __init__(
+        self,
+        cutscenes: list[EventSpec],
+        majors: list[EventSpec],
+        requested: list[str],
+        decisions: list[EventSpec],
+    ) -> None:
+        self.cutscenes = cutscenes
+        self.majors = majors
+        self.requested = requested
+        self.decisions = decisions
 
 
 def eligible(event: EventSpec, world: WorldState, seed: int, requested: set[str]) -> bool:
+    """Whether *event* fires now.
+
+    It must not have fired before (unless it repeats) nor be running, and no event it
+    excludes may have fired. A requested event then fires regardless; otherwise it must be
+    inside its window, its condition must hold, and its hazard draw must pass (a
+    counter-based uniform of the seed, the event and the quarter).
+    """
+
     if event.once and event.id in world.fired:
         return False
     if event.id in world.active:
@@ -55,6 +69,8 @@ def eligible(event: EventSpec, world: WorldState, seed: int, requested: set[str]
 def run_director(
     catalog: Catalog, world: WorldState, seed: int, requested: set[str]
 ) -> DirectorResult:
+    """Fire this quarter's events on *world*; each fires at most once a quarter."""
+
     result = DirectorResult([], [], [], [])
     ordered = catalog.ordered
     fired_now: set[str] = set()  # an event fires at most once a quarter, even if repeatable

@@ -1,24 +1,18 @@
-"""Fitting the crisis generator's rates to the crisis data (decision 18; ``generator fit``).
+"""Fit crisis rates to observed counts by type, region group, and decade.
 
-Reference-play campaigns (tier-1 mode, every power computer-run, the generator on) count the
-crises that start, named and generated, by template, region group and decade. Named major
-events count by family (``generator.yaml`` ``named``) toward the same targets (decision 21).
-Each round scales a fitted template's ``rate`` toward its total, then its group and decade
-factors toward their marginals (iterative proportional fitting of the generated part:
-the target less what named crises already supply), damped by ``power`` (0.5: a square
-root, safe with few campaigns; 1: a full step). Templates without data (alignment contests,
-settlements) keep their judgment rates.
+Simulated campaigns count both named and generated crises. Each fitting round
+adjusts the base rate, then the region and decade factors, toward the counts
+left after named crises are included. The adjustment ratio is raised to
+``power``: 0.5 takes a square-root step, while 1 takes the full step. Crisis
+types without data keep their assumed rates.
 
-The fit reads exposure (E51): the castable, unblocked region-quarters each group and decade
-offers (``generator.count_exposure``), since a crisis can start only where a hostile rival
-can be cast.
-
-* **The floor:** every level keeps at least ``FLOOR`` times the data's average crises per
-  castable region-quarter, times its own exposure, even where the data have none or named
-  crises already supply them, so generated crises can stand in where a named one does not
-  fire (decision 16). Over a margin the floors add at most ``FLOOR`` times the data's total.
-* **No exposure:** a level with under ``MIN_EXPOSURE`` castable region-quarters a campaign
-  keeps its factor, which would otherwise grow without effect.
+Exposure counts the region-quarters where a crisis could start: the region is
+unblocked and has a hostile rival. A floor keeps each level at least at
+``FLOOR * observed crises per eligible region-quarter * its exposure``, even
+where named events already meet the observed count. Across a group or decade
+margin, these floors add at most ``FLOOR`` times the observed total. Levels
+below ``MIN_EXPOSURE`` keep their factors because increasing them would have
+little effect.
 """
 
 from __future__ import annotations
@@ -27,13 +21,14 @@ import copy
 from collections import Counter
 from collections.abc import Callable, Mapping
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, field, replace
 from typing import Any
 
-from . import calendar, generator
-from .catalog import Catalog, EventTable, load_catalog
-from .engine import CampaignEngine, EngineConfig, run_episode
-from .policies import make_policy
+from ...records import Record
+from ..catalog.core import Catalog, EventTable, load_catalog
+from ..decisions.policies import make_policy
+from ..engine.core import CampaignEngine, EngineConfig, run_episode
+from ..world import calendar
+from . import generator
 
 Cell = tuple[str, str, int]  # (template, group, decade)
 Exposure = Counter[tuple[str, int]]  # (group, decade) -> castable, unblocked region-quarters
@@ -41,15 +36,30 @@ FLOOR = 0.25  # a level keeps this share of the data's crises per castable regio
 MIN_EXPOSURE = 1.0  # castable region-quarters a campaign below which a factor is left alone
 
 
-@dataclass(frozen=True)
-class Counts:
-    named: Counter[Cell]
-    generated: Counter[Cell]
-    campaigns: int
-    exposure: Exposure = field(default_factory=Counter)  # summed over the campaigns
+class Counts(Record):
+    """Crises counted over reference-play campaigns, by (template, region group, decade):
+    those from named events, those generated, and the exposure (castable, unblocked
+    region-quarters).
+    """
+
+    def __init__(
+        self,
+        named: Counter[Cell],
+        generated: Counter[Cell],
+        campaigns: int,
+        exposure: Exposure | None = None,
+    ) -> None:
+        self.named = named
+        self.generated = generated
+        self.campaigns = campaigns
+        self.exposure: Exposure = (
+            Counter() if exposure is None else exposure
+        )  # summed over the campaigns
 
 
 def _cells(catalog: Catalog, engine: CampaignEngine) -> tuple[Counter[Cell], Counter[Cell]]:
+    """The crises that started in one campaign, named and generated, by cell."""
+
     doc = catalog.raw.generator  # type: ignore[union-attr]
     named_map: Mapping[str, str] = doc["named"]
     named: Counter[Cell] = Counter()
@@ -80,16 +90,20 @@ def with_generator(catalog: Catalog, generator_doc: Mapping[str, Any]) -> Catalo
     raw = catalog.raw
     assert raw is not None
     table = EventTable(catalog.events)
-    new = replace(catalog, raw=replace(raw, generator=generator_doc), events=table)
+    new = catalog.replace(raw=raw.replace(generator=generator_doc), events=table)
     table.owner = new
     return new
 
 
 def _init(generator_doc: Mapping[str, Any]) -> None:
+    """Give a worker process its catalog with the generator document under fit."""
+
     _WORKER["catalog"] = with_generator(load_catalog(), generator_doc)
 
 
 def _campaign(seed: int) -> tuple[Counter[Cell], Counter[Cell], Exposure]:
+    """One reference-play campaign with the generator on: its crisis counts and exposure."""
+
     catalog: Catalog = _WORKER["catalog"]
     config = EngineConfig(agents=(), playable_tier=1, npc_policy="equilibrium", generator=True)
     engine = CampaignEngine(catalog, config)
@@ -104,6 +118,8 @@ def _campaign(seed: int) -> tuple[Counter[Cell], Counter[Cell], Exposure]:
 
 
 def count(generator_doc: Mapping[str, Any], seeds: list[int], workers: int) -> Counts:
+    """The crisis counts of the campaigns *seeds*, on *workers* processes."""
+
     named: Counter[Cell] = Counter()
     generated: Counter[Cell] = Counter()
     exposure: Exposure = Counter()
@@ -116,6 +132,8 @@ def count(generator_doc: Mapping[str, Any], seeds: list[int], workers: int) -> C
 
 
 def _margin(counter: Counter[Cell], template: str, axis: int) -> Counter[Any]:
+    """The counts of *template* summed onto one axis (1: region group, 2: decade)."""
+
     out: Counter[Any] = Counter()
     for cell, value in counter.items():
         if cell[0] == template:

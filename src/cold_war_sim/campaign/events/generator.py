@@ -1,23 +1,8 @@
-"""The crisis generator: crises where the world's state makes them likely (``data/generator.yaml``).
+"""Generate crises from the current world state.
 
-GOALS.md section 12, decisions 16-21. Each quarter, for every region without a crisis of its
-own, each template (``standoff``, ``proxy_war``, ``uprising``, ``alignment``, ``settlement``)
-starts a crisis with hazard
-
-    h = min(hazard_cap, rate x group_factor x decade_factor x exp(sum_k slope_k (x_k - reference_k)))
-
-over the region's features (instability, how contested its influence is, tension, colonial
-rule, a recent war). Its roles are cast from the world: the region's leading power (``$A``)
-and its strongest hostile rival (``$B``). A generated crisis is a major event with the id
-``gen:<template>:<region>:<A>-<B>``, compiled on first use by the catalog
-(:meth:`.catalog.EventTable.__missing__`) from the template with derived payoffs and the
-shared effects contract, so it carries no hand-set stakes.
-
-Named crises take precedence: a region with a major event active, or one that started within
-``precedence_quarters``, gets none. Draws are counter-based uniforms of the seed, template,
-region and quarter, so they do not depend on the policies. The generator is off unless
-``EngineConfig.generator`` is set, and never runs with historical chance (the replay has only
-named crises).
+Each quarter, eligible regions may produce one of five crisis types. Local
+conditions determine the probability; the region's leading power and its
+strongest hostile rival take the roles. Named events take precedence.
 """
 
 from __future__ import annotations
@@ -28,13 +13,13 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from ..families import attrition, bargaining, crisis, intervention
-from . import calendar
-from .rng import counter_uniform
-from .state import POWERS, REGIONS, WorldState
+from ...families import attrition, bargaining, crisis, intervention
+from ..engine.reproducibility import counter_uniform
+from ..world import calendar
+from ..world.state import POWERS, REGIONS, WorldState
 
 if TYPE_CHECKING:
-    from .catalog import Catalog
+    from ..catalog.core import Catalog
 
 PREFIX = "gen"
 TEMPLATES = ("standoff", "proxy_war", "uprising", "alignment", "settlement")
@@ -63,15 +48,21 @@ WAR_LABELS = frozenset(
 
 
 class GeneratorError(ValueError):
+    """Raised for an invalid generator document."""
+
     pass
 
 
 # ------------------------------------------------------------------ identities
 def event_id(template: str, region: str, roles: tuple[str, str]) -> str:
+    """The id of a generated crisis: ``gen:<template>:<region>:<A>-<B>``."""
+
     return f"{PREFIX}:{template}:{region}:{roles[0]}-{roles[1]}"
 
 
 def is_generated(event: str) -> bool:
+    """Whether *event* is a generated crisis's id."""
+
     return event.startswith(f"{PREFIX}:")
 
 
@@ -91,6 +82,8 @@ def parse_id(event: str) -> tuple[str, str, tuple[str, str]]:
 
 # ------------------------------------------------------------------ raw events
 def _substitute(node: Any, names: Mapping[str, str]) -> Any:
+    """*node* with every placeholder in *names* replaced, in strings, lists and mappings (keys too)."""
+
     if isinstance(node, str):
         for key, value in names.items():
             node = node.replace(key, value)
@@ -103,6 +96,8 @@ def _substitute(node: Any, names: Mapping[str, str]) -> Any:
 
 
 def labels_of(template: str, roles: tuple[str, str]) -> tuple[str, ...]:
+    """The outcome labels of a crisis of *template* cast with *roles*."""
+
     family = FAMILY_OF[template]
     if family == "alignment":
         return (f"aligned_{roles[0]}", f"aligned_{roles[1]}", "nonaligned")
@@ -153,6 +148,8 @@ def raw_event(doc: Mapping[str, Any], event: str) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ the world
 def group_of(doc: Mapping[str, Any], region: str) -> str:
+    """The region group that *region* belongs to."""
+
     for group, members in doc["groups"].items():
         if region in members:
             return str(group)
@@ -160,6 +157,8 @@ def group_of(doc: Mapping[str, Any], region: str) -> str:
 
 
 def decade_of(doc: Mapping[str, Any], quarter: int) -> int:
+    """The latest listed decade that starts by *quarter* (the first for earlier dates)."""
+
     year = calendar.year(quarter)
     decades = sorted(int(d) for d in doc["decades"])
     return max(d for d in decades if d <= max(year, decades[0]))
@@ -195,6 +194,8 @@ def _named_regions(catalog: Catalog) -> dict[str, str]:
 
 
 def _region_of(catalog: Catalog, named: Mapping[str, str], event: str) -> str | None:
+    """The region of *event*: read from a generated id, or looked up for a named one."""
+
     if is_generated(event):
         return parse_id(event)[1]
     return named.get(event)
@@ -216,9 +217,13 @@ def blocked(catalog: Catalog, world: WorldState, region: str, precedence: int) -
 def features(
     catalog: Catalog, world: WorldState, region: str, roles: tuple[str, str]
 ) -> dict[str, float]:
+    """The region's hazard features: instability, how much influence the challenger
+    holds, tension, colonial rule, and a war that ended there recently.
+    """
+
     state = world.regions[region]
     named = _named_regions(catalog)
-    recent = any(  # a war that ended there lately, counted from its end (E52)
+    recent = any(  # a war that ended there lately, counted from its end
         world.quarter - quarter < RECENT_WAR_QUARTERS
         and _region_of(catalog, named, event) == region
         and world.outcomes.get(event) in WAR_LABELS
@@ -236,6 +241,16 @@ def features(
 def hazard(
     doc: Mapping[str, Any], template: str, region: str, quarter: int, x: Mapping[str, float]
 ) -> float:
+    """Return the quarterly probability of this crisis at feature values *x*.
+
+        h = min(hazard_cap, rate * group_factor * decade_factor
+                * exp(sum_k slope_k * (x_k - reference_k)))
+
+    The rate describes the reference conditions. Group and decade factors adjust
+    it by place and time; the slopes describe how conditions change it. Return
+    zero when a required feature is absent.
+    """
+
     spec = doc["templates"][template]
     required = spec.get("requires")
     if required is not None and x[str(required)] <= 0.0:
