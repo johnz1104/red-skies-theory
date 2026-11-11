@@ -41,6 +41,9 @@ from .rng import stream
 from .state import IDENTITIES, POWERS, identity, seat
 
 ENTRY_SOURCES = ("historical", "campaign")
+# the layout of pickled engine states; older entry files are refused (E52: the world
+# gained ``resolved``)
+ENTRY_FORMAT = 2
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,7 @@ class Entry:
     quarter: int
     state: EngineState
     catalog: str = ""  # Catalog.digest at capture ("" in entries saved before E50)
+    format: int = 1  # ENTRY_FORMAT at capture (1 in entries saved before E52)
 
     def __deepcopy__(self, memo: dict[int, object]) -> Entry:
         return self
@@ -104,7 +108,15 @@ def capture_entries(
             engine.act(policy.choose(engine, request, rng))
         for event_id, state in engine.captured.items():
             entries[event_id].append(
-                Entry(event_id, source, seed, state.world.quarter, state, catalog.digest)
+                Entry(
+                    event_id,
+                    source,
+                    seed,
+                    state.world.quarter,
+                    state,
+                    catalog.digest,
+                    ENTRY_FORMAT,
+                )
             )
     return entries
 
@@ -114,6 +126,12 @@ def check_entries(entries: Mapping[str, Sequence[Entry]], catalog: Catalog) -> N
     game as bound when it started, so a later edit to the data would not reach it (E50:
     the Cuba entries trained in E48 predated its officers)."""
 
+    old = [e for items in entries.values() for e in items if e.format != ENTRY_FORMAT]
+    if old:
+        raise ValueError(
+            f"{len(old)} entries were saved by older code (first: {old[0].label}); "
+            "recapture them with `rl entries`"
+        )
     stale = [e for items in entries.values() for e in items if e.catalog != catalog.digest]
     if stale:
         raise ValueError(
@@ -227,6 +245,7 @@ class ScenarioEnv:
         self.truncations: dict[str, bool] = {}
         self.infos: dict[str, dict[str, Any]] = {}
         self.agent_selection: str = ""
+        self.expected = False  # this episode's returns are chance-expected (instant events)
 
     @property
     def observation_size(self) -> int:
@@ -247,6 +266,7 @@ class ScenarioEnv:
         engine.config = replace(self.config, scope=event)
         engine.restore(chosen.state)
         _reseed(engine.s, event, int(seed))
+        self.expected = engine.expects_scope()
         world = engine.world
         self.roles = {
             identity(world, p): p
@@ -299,12 +319,12 @@ class ScenarioEnv:
 
     def returns(self) -> dict[str, float]:
         """Each agent's return in the event's game, in goal units (once it resolved); with
-        chance-expected returns, the estimate the rewards add up to."""
+        chance-expected returns (instant events), the estimate the rewards add up to."""
 
         returns = self.engine.s.last_returns.get(self.event_id)
         if not self.engine.s.scope_done or returns is None:
             return {}
-        if self.config.chance_expected:
+        if self.expected:
             return dict(self._totals)
         return {a: float(returns.get(role, 0.0)) / self.kappa for a, role in self.roles.items()}
 
@@ -315,7 +335,7 @@ class ScenarioEnv:
         if not self.engine.s.scope_done:
             return {}
         expected = self.engine.s.expected
-        if self.config.chance_expected and expected is not None:
+        if self.expected and expected is not None:
             return dict(expected.outcomes)
         outcome = self.outcome()
         return {outcome: 1.0} if outcome is not None else {}
@@ -329,7 +349,7 @@ class ScenarioEnv:
     def _collect(self) -> None:
         self.engine.pop_rewards()  # the campaign's goal reward is not a scenario's reward
         self.rewards = dict.fromkeys(self.agents, 0.0)
-        if self.config.chance_expected:  # payoffs as the engine counts them in expectation
+        if self.expected:  # payoffs as the engine counts them in expectation
             accrued = self.engine.pop_expected()
             for agent in self.agents:
                 value = accrued.get(self.roles[agent], 0.0) / self.kappa
@@ -393,6 +413,7 @@ def _reseed(state: EngineState, event_id: str, seed: int) -> None:
 
 
 __all__ = [
+    "ENTRY_FORMAT",
     "ENTRY_SOURCES",
     "POWERS",
     "Entry",

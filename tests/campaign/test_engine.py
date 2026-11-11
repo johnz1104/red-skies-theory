@@ -267,3 +267,35 @@ def _broken_catalog(tmp_path: Path, mutate: Any) -> None:
 def test_catalog_validation_errors(tmp_path: Path, mutate: Any) -> None:
     with pytest.raises(CatalogError):
         _broken_catalog(tmp_path, mutate)
+
+
+def _to_strategy_stage(engine: CampaignEngine, power: str, stage: str, choices: dict) -> None:
+    """Advance to *power*'s *stage* in the first strategy turn, choosing by option id."""
+
+    engine.reset(0)
+    engine.resume()
+    while True:
+        request = engine.pending()
+        assert request is not None
+        if request.kind == f"strategy_{stage}" and request.power == power:
+            return
+        ids = [o.id for o in request.options]
+        wanted = choices.get((request.power, request.kind))
+        engine.act(ids.index(wanted) if wanted in ids else 0)
+
+
+def test_a_strategy_turn_shows_the_powers_own_choices_so_far(fixture_catalog: Catalog) -> None:
+    # E52: the mode decision could not tell which region had just been chosen
+    config = EngineConfig(agents=("USA", "USSR"), npc_policy="equilibrium")
+    seen = {}
+    for region in ("germany", "korea"):
+        engine = CampaignEngine(fixture_catalog, config)
+        choices = {("USA", "strategy_region"): region, ("USSR", "strategy_region"): "germany"}
+        _to_strategy_stage(engine, "USA", "mode", choices)
+        assert engine.describe("USA")["decision"]["committed"]["region"] == region
+        usa = engine.observe("USA")
+        _to_strategy_stage(engine, "USSR", "mode", choices)
+        seen[region] = (usa, engine.observe("USSR"))
+    assert not np.array_equal(seen["germany"][0], seen["korea"][0])
+    # another power's choices stay secret until the turn is complete
+    assert np.array_equal(seen["germany"][1], seen["korea"][1])

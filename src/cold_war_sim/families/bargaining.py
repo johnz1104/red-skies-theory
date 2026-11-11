@@ -35,7 +35,7 @@ Bayesian equilibrium over beliefs.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from typing import Any
@@ -89,9 +89,10 @@ class ConsentParams(ImmutableParams):
     id: str
     base: float
     per_share: float
-    veto_value: float
+    veto_value: float  # a vetoed ending, whoever vetoed
     breakdown_value: float
     impasse_value: float
+    veto_cost: float = 0.0  # paid only by the role that vetoes (its own tag, E52)
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,7 +443,8 @@ class BargainingState(LoggedState):
                 assert self.share is not None
                 result[consent.id] = consent.base + consent.per_share * self.share
             elif self.label == "vetoed":
-                result[consent.id] = consent.veto_value
+                own = f"{consent.id}:vetoed" in self.tags
+                result[consent.id] = consent.veto_value - (consent.veto_cost if own else 0.0)
             elif self.label == "breakdown":
                 result[consent.id] = consent.breakdown_value
             else:
@@ -525,13 +527,44 @@ def _agreement_values(
     state.share = p.grid[offer]
     state.agreed_period = period
     state.period = period
-    ratified = all(consent_ratifies(c, p.grid[offer]) for c in p.consent)
+    ratified = all(ratify_choices(p.consent, p.grid[offer]))
     state.label = "agreement" if ratified else "vetoed"
     return state._side_payoff("A"), state._side_payoff("B"), ratified
 
 
-def consent_ratifies(consent: ConsentParams, share: float) -> bool:
-    return consent.base + consent.per_share * share >= consent.veto_value - TOLERANCE
+def ratify_choices(consent: Sequence[ConsentParams], share: float) -> tuple[bool, ...]:
+    """Each ratifier's subgame-perfect choice at *share*, in the order they are asked,
+    solved backward (E52): once a later ratifier will veto, an earlier one's approval
+    changes nothing, so it ratifies rather than pay its own veto cost (with no cost it is
+    indifferent and keeps its own comparison)."""
+
+    choices: list[bool] = []
+    later = True  # every later ratifier approves
+    for c in reversed(consent):
+        agree = c.base + c.per_share * share
+        own_veto = c.veto_value - c.veto_cost
+        ratifies = True if not later and c.veto_cost > 0.0 else agree >= own_veto - TOLERANCE
+        choices.append(ratifies)
+        later = later and ratifies
+    return tuple(reversed(choices))
+
+
+def ratify_probabilities(
+    consent: Sequence[ConsentParams], share: float, temperature: float
+) -> tuple[float, ...]:
+    """Each ratifier's logit choice at *share* when asked, solved backward (E52): its
+    approval yields agreement only if every later ratifier approves too, and a vetoed
+    ending otherwise."""
+
+    probs: list[float] = []
+    later = 1.0  # probability that every later ratifier approves
+    for c in reversed(consent):
+        agree = c.base + c.per_share * share
+        ratify = later * agree + (1.0 - later) * c.veto_value
+        q = _logistic((ratify - (c.veto_value - c.veto_cost)) / temperature)
+        probs.append(q)
+        later *= q
+    return tuple(reversed(probs))
 
 
 def solve(game: BargainingGame) -> BargainingSolution:
@@ -595,9 +628,9 @@ def solve(game: BargainingGame) -> BargainingSolution:
         )
         commit_choice[("A", ())] = "commit" if a_commit else "no_commitment"
     ratify = {
-        (i, offer): consent_ratifies(c, p.grid[offer])
-        for i, c in enumerate(p.consent)
+        (i, offer): choice
         for offer in range(len(p.grid))
+        for i, choice in enumerate(ratify_choices(p.consent, p.grid[offer]))
     }
     return BargainingSolution(commit_choice, offer_choice, accept_choice, ratify, values)
 
@@ -629,9 +662,9 @@ def solve_logit(game: BargainingGame, temperature: float) -> LogitSolution:
         raise ValueError("bargaining with types or a contest: use bargaining_beliefs")
     tau = temperature
     ratify = {
-        (i, x): _logistic((c.base + c.per_share * p.grid[x] - c.veto_value) / tau)
-        for i, c in enumerate(p.consent)
+        (i, x): q
         for x in range(len(p.grid))
+        for i, q in enumerate(ratify_probabilities(p.consent, p.grid[x], tau))
     }
     offer_probs: dict[tuple[bool, bool, int], tuple[float, ...]] = {}
     accept_probs: dict[tuple[bool, bool, int, int], float] = {}
@@ -886,7 +919,15 @@ def build(config: Mapping[str, Any]) -> BargainingGame:
         reject_unknown(
             f"bargaining.consent[{i}]",
             item,
-            ("role", "base", "per_share", "veto_value", "breakdown_value", "impasse_value"),
+            (
+                "role",
+                "base",
+                "per_share",
+                "veto_value",
+                "veto_cost",
+                "breakdown_value",
+                "impasse_value",
+            ),
         )
         consent.append(
             ConsentParams(
@@ -896,6 +937,7 @@ def build(config: Mapping[str, Any]) -> BargainingGame:
                 veto_value=finite("consent.veto_value", item.get("veto_value", 0.0)),
                 breakdown_value=finite("consent.breakdown_value", item.get("breakdown_value", 0.0)),
                 impasse_value=finite("consent.impasse_value", item.get("impasse_value", 0.0)),
+                veto_cost=nonnegative("consent.veto_cost", item.get("veto_cost", 0.0)),
             )
         )
     ids = [a_role, b_role, *(c.id for c in consent)]

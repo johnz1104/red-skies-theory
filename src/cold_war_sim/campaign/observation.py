@@ -11,7 +11,9 @@ The family's observation is a summary, and several information sets can share it
 (E44: Moscow's own stakes at Suez, other roles' earlier moves). The last block therefore
 carries the role's information state itself: its most recent ``TOKEN_SLOTS`` log tokens,
 newest first, each as a hashed id in 1..``TOKEN_SPACE`` - 1 (0 = empty). The ids are
-categories, not magnitudes: a network embeds them (``rl.ppo``).
+categories, not magnitudes: a network embeds them (``rl.ppo``). On a strategy turn the
+block carries the power's own choices so far this turn instead (``strategy:<stage>=<id>``,
+newest first; E52), so a mode can follow the region just chosen.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from . import calendar
 from .decisions import DECISION_KINDS, MAX_OPTIONS
 from .rng import stable_key
 from .state import POSTURES, POWERS, REGIONS, STATUSES
+from .strategic import STAGES
 
 if TYPE_CHECKING:
     from .engine import CampaignEngine
@@ -153,6 +156,11 @@ def encode(engine: CampaignEngine, power: str) -> np.ndarray:
             tokens[: min(len(recent), TOKEN_SLOTS)] = [
                 float(token_id(t)) for t in recent[:TOKEN_SLOTS]
             ]
+        elif request.source == "strategy":
+            commits = engine.pending_commits(power)
+            chosen = [f"strategy:{stage}={commits[stage]}" for stage in STAGES if stage in commits]
+            chosen.reverse()
+            tokens[: len(chosen)] = [float(token_id(t)) for t in chosen]
     values += kind + context + family + tokens
     return np.asarray(values, dtype=np.float32)
 
@@ -185,4 +193,6 @@ def describe(engine: CampaignEngine, power: str) -> dict[str, Any]:
             "role": request.role,
             "options": [o.id for o in request.options],
         }
+        if request.source == "strategy":
+            view["decision"]["committed"] = engine.pending_commits(power)
     return view

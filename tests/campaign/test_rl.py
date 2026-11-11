@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -279,6 +280,70 @@ def test_only_trainable_identities_learn(fixture_catalog: Catalog, entries: Entr
         if any(not torch.equal(v, before[i][k]) for k, v in m.state_dict().items())
     }
     assert changed == {"USA"}
+
+
+def test_frozen_identities_keep_their_normalizers(
+    fixture_catalog: Catalog, entries: Entries
+) -> None:
+    # E52: best-response training moved the frozen opponents' observation normalizers,
+    # so they played differently from the checkpoint they were scored against
+    env = _env(fixture_catalog, entries)
+    config = ppo.PPOConfig(entries="unused.pkl", seed=2, trainable=("USA",))
+    learner = ppo.Learner.create(config, env.observation_size)
+    before = {
+        i: (learner.obs_norms[i].state(), learner.return_norms[i].state()) for i in ppo.IDENTITIES
+    }
+    policy = learner.policy()
+    episodes = [ppo.play_episode(env, policy, s, np.random.default_rng(s)) for s in range(24)]
+    learner.step(episodes)
+    moved = {
+        i
+        for i in ppo.IDENTITIES
+        if (learner.obs_norms[i].state(), learner.return_norms[i].state()) != before[i]
+    }
+    assert moved == {"USA"}
+
+
+def test_league_snapshots_stay_as_they_were(fixture_catalog: Catalog, entries: Entries) -> None:
+    # E52: snapshots were views of the live parameters, so every past opponent was the
+    # current network
+    env = _env(fixture_catalog, entries)
+    learner = ppo.Learner.create(ppo.PPOConfig(entries="unused.pkl", seed=4), env.observation_size)
+    snapshot = learner.weights()
+    kept = {i: {k: v.copy() for k, v in w.items()} for i, w in snapshot.items()}
+    policy = learner.policy()
+    episodes = [ppo.play_episode(env, policy, s, np.random.default_rng(s)) for s in range(16)]
+    learner.step(episodes)
+    for ident, weights in snapshot.items():
+        for key, value in weights.items():
+            assert np.array_equal(value, kept[ident][key])
+    after = learner.weights()
+    assert any(not np.array_equal(after["USA"][k], v) for k, v in snapshot["USA"].items())
+
+
+def test_a_league_opponent_plays_with_its_own_normalizer(
+    fixture_catalog: Catalog, entries: Entries, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = _env(fixture_catalog, entries)
+    learner = ppo.Learner.create(ppo.PPOConfig(entries="unused.pkl"), env.observation_size)
+    old = {i: n.state() for i, n in learner.obs_norms.items()}
+    old = {i: dict(state, count=7.0) for i, state in old.items()}  # a recognizable normalizer
+    current = {i: n.state() for i, n in learner.obs_norms.items()}
+    used: list[dict[str, float]] = []
+
+    class Recording(ppo.LearnedPolicy):
+        def __init__(self, models: Any, norms: Any) -> None:
+            super().__init__(models, norms)
+            used.append({i: n.count for i, n in norms.items()})
+
+    monkeypatch.setattr(ppo, "LearnedPolicy", Recording)
+    monkeypatch.setitem(ppo._WORKER, "env", env)
+    monkeypatch.setitem(ppo._WORKER, "models", {})
+    weights = learner.weights()
+    hidden = learner.config.hidden
+    task = (weights, current, [0, 1], env.observation_size, hidden, [(weights, old)], 1.0)
+    ppo._rollout(task)
+    assert used and all(set(counts.values()) == {7.0} for counts in used)
 
 
 def test_unrecorded_identities_leave_no_steps(fixture_catalog: Catalog, entries: Entries) -> None:

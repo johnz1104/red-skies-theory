@@ -305,7 +305,7 @@ def play_episode(
         record["survival"].append(float(info.get("survival", 1.0)))
         env.step(action)
     masses: dict[str, float] = {}
-    if isinstance(env, ScenarioEnv) and env.config.chance_expected:
+    if isinstance(env, ScenarioEnv) and env.expected:
         masses = env.outcome_masses()
     return Episode(
         env.event_id,
@@ -378,6 +378,8 @@ def make_env(config: PPOConfig, catalog: Catalog) -> ScenarioEnv | CampaignTrain
 
 
 Weights = dict[str, dict[str, np.ndarray]]
+Norms = dict[str, dict[str, Any]]  # identity -> RunningStats.state()
+Snapshot = tuple[Weights, Norms]  # a league entry: networks with their own normalizers
 
 
 def _models(weights: Weights, obs_size: int, hidden: int, cache: dict[str, Any]) -> dict[str, Any]:
@@ -392,26 +394,33 @@ def _models(weights: Weights, obs_size: int, hidden: int, cache: dict[str, Any])
     return models
 
 
+def _stats(norms: Norms) -> dict[str, RunningStats]:
+    return {k: RunningStats.from_state(v) for k, v in norms.items()}
+
+
 def _rollout(
-    task: tuple[Weights, dict[str, dict[str, Any]], list[int], int, int, list[Weights], float],
+    task: tuple[Weights, Norms, list[int], int, int, list[Snapshot], float],
 ) -> list[Episode]:
     weights, norms, seeds, obs_size, hidden, pool, share = task
     env = _WORKER["env"]
     current = _models(weights, obs_size, hidden, _WORKER["models"])
-    stats = {k: RunningStats.from_state(v) for k, v in norms.items()}
+    stats = _stats(norms)
     past = [
-        _models(w, obs_size, hidden, _WORKER.setdefault(f"pool{n}", {})) for n, w in enumerate(pool)
+        (_models(w, obs_size, hidden, _WORKER.setdefault(f"pool{n}", {})), _stats(old))
+        for n, (w, old) in enumerate(pool)
     ]
     episodes = []
     for seed in seeds:
         rng = np.random.default_rng(seed + 7919)
-        models, record = dict(current), set(current)
+        models, used, record = dict(current), dict(stats), set(current)
         if past:
             for ident in list(current):  # each identity may play a past snapshot instead
                 if rng.random() < share:
-                    models[ident] = past[int(rng.integers(len(past)))][ident]
+                    snapshot, snapshot_stats = past[int(rng.integers(len(past)))]
+                    models[ident] = snapshot[ident]
+                    used[ident] = snapshot_stats[ident]  # with the normalizer it learned on
                     record.discard(ident)
-        policy = LearnedPolicy(models, stats)
+        policy = LearnedPolicy(models, used)
         episodes.append(play_episode(env, policy, seed, rng, record=record))
     return episodes
 
@@ -613,8 +622,11 @@ class Learner:
         return LearnedPolicy(self.models, self.obs_norms)
 
     def weights(self) -> dict[str, dict[str, np.ndarray]]:
+        """Copies of the networks' parameters (a view would follow later updates: E52, the
+        league's snapshots were the live networks)."""
+
         return {
-            i: {k: v.detach().cpu().numpy() for k, v in m.state_dict().items()}
+            i: {k: v.detach().cpu().numpy().copy() for k, v in m.state_dict().items()}
             for i, m in self.models.items()
         }
 
@@ -653,6 +665,8 @@ class Learner:
             )
             stats[ident]["decisions"] = float(len(batch.action))
         for ident in IDENTITIES:  # normalizers move after the update (the batch used the old)
+            if self.config.trainable and ident not in self.config.trainable:
+                continue  # a frozen identity keeps its preprocessing too (best responses, E52)
             raw = [o for e in episodes for o in e.steps.get(ident, {}).get("obs", [])]
             if raw:
                 self.obs_norms[ident].update(split(np.stack(raw))[0])
@@ -746,7 +760,7 @@ def train(
     (out / "config.json").write_text(json.dumps(asdict(config), indent=1))
     log = (out / "log.jsonl").open("a", encoding="utf-8")
     workers = max(1, config.workers)
-    league: list[Weights] = []  # past snapshots (league play); not saved in checkpoints
+    league: list[Snapshot] = []  # past snapshots (league play); not saved in checkpoints
     with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(config,)) as pool:
         while learner.iteration < config.iterations:
             it = learner.iteration
@@ -757,7 +771,7 @@ def train(
             weights = learner.weights()
             norms = {i: n.state() for i, n in learner.obs_norms.items()}
             if config.league and it and it % config.league == 0:
-                league.append(weights)
+                league.append((weights, norms))
             tasks = [
                 (weights, norms, c, learner.obs_size, config.hidden, league, config.league_share)
                 for c in chunks

@@ -606,13 +606,15 @@ def _bargaining(v: Valuer, config: dict[str, Any]) -> None:
         low, high = at_share(0.0, power), at_share(1.0, power)
         item["base"] = low
         item["per_share"] = round(high - low, DECIMALS)
-        # vetoing costs the vetoer what its own "<role>:vetoed" tag does (e.g. relations)
+        # a vetoed ending is worth the same to every ratifier; vetoing costs the vetoer
+        # alone what its own "<role>:vetoed" tag does, e.g. relations (E52)
+        item["veto_value"] = v.label_value("vetoed", power)
         veto_tag = major.tags.get(f"{power}:vetoed")
-        if veto_tag is None:
-            item["veto_value"] = v.label_value("vetoed", power)
-        else:
+        if veto_tag is not None:
             after = v.after([major.outcomes["vetoed"].effects, veto_tag.effects], label="vetoed")
-            item["veto_value"] = v.value(after, power)
+            item["veto_cost"] = max(
+                0.0, round(item["veto_value"] - v.value(after, power), DECIMALS)
+            )
         item["breakdown_value"] = v.label_value("breakdown", power)
         item["impasse_value"] = v.label_value("impasse", power)
 
@@ -709,6 +711,8 @@ def slots(
             if item["role"] in POWERS:
                 for name in ("base", "per_share", "veto_value", "breakdown_value", "impasse_value"):
                     result.append(("consent", index, name))
+                if f"{item['role']}:vetoed" in tag_set:
+                    result.append(("consent", index, "veto_cost"))
     return result
 
 

@@ -120,8 +120,9 @@ class WorldState:
     tension: float = 0.3
     arms_control: float = 0.0
     flags: set[str] = field(default_factory=set)
-    fired: dict[str, int] = field(default_factory=dict)
+    fired: dict[str, int] = field(default_factory=dict)  # major event -> quarter it started
     active: dict[str, int] = field(default_factory=dict)
+    resolved: dict[str, int] = field(default_factory=dict)  # quarter it last ended (E52)
     outcomes: dict[str, str] = field(default_factory=dict)
     outcome_tags: dict[str, tuple[str, ...]] = field(default_factory=dict)
     powers: dict[str, PowerState] = field(default_factory=dict)

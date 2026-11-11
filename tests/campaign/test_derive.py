@@ -168,7 +168,7 @@ def test_follow_on_events_count_at_their_discounted_chance(tmp_path: Path) -> No
     assert usa_with["compromise"] == pytest.approx(usa_without["compromise"])  # blocked by neither
 
 
-def test_a_vetoers_own_cost_counts_in_its_veto_value(tmp_path: Path) -> None:
+def test_a_vetoers_own_cost_is_its_veto_cost(tmp_path: Path) -> None:
     doc = yaml.safe_load(FIXTURE_EVENTS.read_text())
     talks = next(e for e in doc["events"] if e["id"] == "fx_talks")
     talks["model"]["payoffs"] = "derived"
@@ -180,7 +180,10 @@ def test_a_vetoers_own_cost_counts_in_its_veto_value(tmp_path: Path) -> None:
     path.write_text(yaml.safe_dump(doc))
     catalog = load_catalog(event_files=[path])
     config = catalog.instantiate_config("fx_talks", catalog.initial_world())
-    assert config["consent"][0]["veto_value"] < 0.0  # the vetoed label alone changes nothing
+    # E52: a vetoed ending is worth the same to every ratifier (the label alone changes
+    # nothing here); the tag's cost falls on the vetoer alone, as its veto cost
+    assert config["consent"][0]["veto_value"] == 0.0
+    assert config["consent"][0]["veto_cost"] > 0.0
     assert config["sides"]["A"]["vetoed_value"] == 0.0  # principals value the label only
 
 

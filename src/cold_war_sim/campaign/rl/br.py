@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy as np
 
-from .ppo import Learner, Weights, _init_worker, _rollout, train
+from .ppo import Learner, Snapshot, Weights, _init_worker, _rollout, train
 
 EVAL_SEED = 10_000_019  # evaluation episodes use seeds training never draws
 
@@ -38,7 +38,7 @@ def _returns(
     """The identity's return in each episode it takes part in, by seed."""
 
     chunks = [seeds[w::workers] for w in range(workers)]
-    empty: list[Weights] = []
+    empty: list[Snapshot] = []
     tasks = [(weights, norms, c, obs_size, config.hidden, empty, 0.0) for c in chunks if c]
     out: dict[int, float] = {}
     with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(config,)) as pool:

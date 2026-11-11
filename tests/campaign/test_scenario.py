@@ -119,6 +119,44 @@ def test_rewards_arrive_at_the_end_as_returns(fixture_catalog: Catalog) -> None:
     assert totals == pytest.approx(env.returns())
 
 
+def _play_out(env: ScenarioEnv, seed: int) -> dict[str, float]:
+    """Uniform agents from a reset at *seed*; the rewards each agent collected."""
+
+    env.reset(seed)
+    totals = dict.fromkeys(env.agents, 0.0)
+    rng = np.random.default_rng(seed)
+    while env.agents:
+        agent = env.agent_selection
+        _, reward, term, trunc, _ = env.last()
+        totals[agent] += reward
+        if term or trunc:
+            env.step(None)
+            continue
+        env.step(int(rng.choice(np.flatnonzero(env.action_mask(agent)))))
+    return totals
+
+
+@pytest.mark.parametrize("event", ["fx_civil_war", "fx_talks"])
+def test_events_over_quarters_keep_sampled_returns_under_the_flag(
+    fixture_catalog: Catalog, event: str
+) -> None:
+    # E52: chance-expected returns cover instant events only; the flag used to zero every
+    # reward of a war or talks, which the engine does not count in expectation
+    entries = capture_entries(fixture_catalog, [event], playable_tier=None)
+    runs: dict[bool, list[tuple[dict[str, float], dict[str, float], dict[str, float]]]] = {}
+    for flag in (False, True):
+        config = EngineConfig(npc_policy="equilibrium", chance_expected=flag)
+        env = ScenarioEnv(entries, fixture_catalog, config)
+        runs[flag] = []
+        for seed in range(6):
+            totals = _play_out(env, seed)
+            assert not env.expected
+            assert totals == pytest.approx(env.returns())
+            runs[flag].append((totals, env.returns(), env.outcome_masses()))
+    assert runs[True] == runs[False]
+    assert any(value != 0.0 for totals, _, _ in runs[False] for value in totals.values())
+
+
 def test_seeds_reseed_the_event(fixture_catalog: Catalog) -> None:
     entries = capture_entries(fixture_catalog, ["fx_civil_war"], playable_tier=None)
     env = ScenarioEnv(entries, fixture_catalog, EngineConfig(npc_policy="equilibrium"))
@@ -162,6 +200,9 @@ def test_entries_from_another_catalog_are_refused(fixture_catalog: Catalog) -> N
     stale = {"fx_crisis": [replace(entries["fx_crisis"][0], catalog="")]}
     with pytest.raises(ValueError, match="recapture"):
         ScenarioEnv(stale, fixture_catalog)
+    old = {"fx_crisis": [replace(entries["fx_crisis"][0], format=1)]}  # before E52's layout
+    with pytest.raises(ValueError, match="older code"):
+        ScenarioEnv(old, fixture_catalog)
 
 
 def _uniform_play(

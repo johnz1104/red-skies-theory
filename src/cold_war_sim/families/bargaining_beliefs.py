@@ -41,7 +41,7 @@ from .bargaining import (
     TOLERANCE,
     BargainingParams,
     BargainingState,
-    consent_ratifies,
+    ratify_choices,
     side_payoff,
 )
 
@@ -190,7 +190,7 @@ class BeliefSolution:
     def accept_values(self, combo: tuple, t: int, x: int) -> Array:
         p = self.params
         share = p.grid[x]
-        ratified = all(consent_ratifies(c, share) for c in p.consent)
+        ratified = all(ratify_choices(p.consent, share))
         return self._terminal("agreement" if ratified else "vetoed", share, t, t, combo)
 
     # ------------------------------------------------------------ continuation
@@ -941,8 +941,8 @@ class BeliefPolicy:
         legal = state.legal_actions()
         if state.phase == "consent":
             assert state.offer is not None
-            consent = p.consent[state.consent_index]
-            choice = "ratify" if consent_ratifies(consent, p.grid[state.offer]) else "veto"
+            ratifies = ratify_choices(p.consent, p.grid[state.offer])[state.consent_index]
+            choice = "ratify" if ratifies else "veto"
             return {a: (1.0 if a == choice else 0.0) for a in legal}
         combo, position, mu_a, mu_b, pre = self.track(state)
         key = {"commit_a": "A", "commit_b": "B"}.get(state.phase)

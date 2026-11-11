@@ -7,7 +7,7 @@ from .backward_induction import (
 )
 from .best_response import BestResponse, NashConvResult, best_response, nash_conv
 from .cfr import CFRResult, cfr_plus
-from .qre import QREResult, logit_qre
+from .qre import QREResult, fixed_point_residual, logit_qre
 
 __all__ = [
     "BackwardInductionResult",
@@ -19,6 +19,7 @@ __all__ = [
     "backward_induction",
     "best_response",
     "cfr_plus",
+    "fixed_point_residual",
     "logit_qre",
     "nash_conv",
 ]

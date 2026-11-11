@@ -58,6 +58,24 @@ def test_instability_raises_the_hazard(catalog: Catalog) -> None:
     assert generator.hazard(doc, "settlement", "germany", world.quarter, x) == 0.0  # no war yet
 
 
+def test_a_long_war_opens_settlements_from_its_end(catalog: Catalog) -> None:
+    # E52: recent_war counted from the war's start, so a war longer than two years never
+    # made its region ripe for a settlement
+    doc = catalog.raw.generator  # type: ignore[union-attr]
+    world = hostile_world(catalog)
+    world.quarter = calendar.parse("1953-Q3")
+    world.fired["korean_war"] = calendar.parse("1950-Q2")  # 13 quarters earlier
+    world.outcomes["korean_war"] = "partition"
+    world.resolved["korean_war"] = world.quarter
+    roles = ("USA", "USSR")
+    for offset, ripe in ((0, True), (generator.RECENT_WAR_QUARTERS - 1, True), (8, False)):
+        world.quarter = calendar.parse("1953-Q3") + offset
+        x = generator.features(catalog, world, "korea", roles)
+        assert x["recent_war"] == (1.0 if ripe else 0.0)
+        settles = generator.hazard(doc, "settlement", "korea", world.quarter, x)
+        assert (settles > 0.0) == ripe
+
+
 def test_generated_events_resolve_but_stay_out_of_the_catalog(catalog: Catalog) -> None:
     named = len(catalog.events)
     eid = generator.event_id("uprising", "eastern_europe", ("USSR", "USA"))

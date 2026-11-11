@@ -537,6 +537,9 @@ def _tree_scores(
             }
             for name, score in report.scores.items()
         }
+        if "learned" in scored[entry.event_id]:  # 0 unless observations leak (E52)
+            scored[entry.event_id]["learned"]["inconsistent"] = sum(report.inconsistent.values())
+        scored[entry.event_id]["qre"]["residual"] = float(f"{report.qre_residual:.2e}")
     return scored
 
 
@@ -556,6 +559,14 @@ def cmd_rl_train(args: argparse.Namespace) -> int:
     evaluate = None
     if config.mode == "scenario":
         entries = ppo.scenario_entries(config)
+        if config.chance_expected:  # only instant events count chance in expectation (E52)
+            instant = [e for e in sorted(entries) if _cadence(catalog, e) == "instant"]
+            other = [e for e in sorted(entries) if e not in instant]
+            note = f"; sampled returns for {', '.join(other)} (over quarters)" if other else ""
+            print(
+                f"rl train: chance-expected returns for {', '.join(instant) or 'no event'}{note}",
+                file=sys.stderr,
+            )
 
         def evaluate(policy: Any) -> dict[str, Any]:
             return _tree_scores(catalog, entries, policy, config.temperature)
@@ -568,6 +579,11 @@ def cmd_rl_train(args: argparse.Namespace) -> int:
         evaluate=evaluate,
     )
     return 0
+
+
+def _cadence(catalog: Catalog, event_id: str) -> str | None:
+    major = catalog.events[event_id].major
+    return None if major is None else major.cadence
 
 
 def _ppo_config(ppo: Any, args: argparse.Namespace, events: tuple[str, ...]) -> Any:
@@ -846,7 +862,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--temperature",
         type=float,
         default=goalcheck.DEFAULT_TEMPERATURE,
-        help="logit temperature of computer-run reference play (0 = exact)",
+        help="logit temperature of computer-run reference play (0 = equilibrium: "
+        "backward induction, or CFR+'s average)",
     )
     run.add_argument(
         "--sample",

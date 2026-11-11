@@ -218,11 +218,11 @@ def features(
 ) -> dict[str, float]:
     state = world.regions[region]
     named = _named_regions(catalog)
-    recent = any(
+    recent = any(  # a war that ended there lately, counted from its end (E52)
         world.quarter - quarter < RECENT_WAR_QUARTERS
         and _region_of(catalog, named, event) == region
         and world.outcomes.get(event) in WAR_LABELS
-        for event, quarter in world.fired.items()
+        for event, quarter in world.resolved.items()
     )
     return {
         "instability": 1.0 - state.stability,

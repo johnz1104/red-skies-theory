@@ -13,7 +13,9 @@ whose information sets are the full game's). Four joint policies are compared:
   of the ``qre`` objective; its **distance** to another profile is the mean total
   variation over agent information sets, weighted by the QRE's own reach (it has full
   support, so every set counts);
-* **exact:** an equilibrium of the true game (backward induction, or CFR+).
+* **exact:** backward induction with perfect information; otherwise CFR+'s average
+  strategy, a Nash equilibrium only in two-player zero-sum games (in general-sum games it
+  approaches a coarse correlated equilibrium).
 
 **Exploitability** is the sum over agent roles of the gain from switching to a best
 response while every other role keeps its policy, in goal units (the game's payoffs
@@ -34,12 +36,17 @@ decision after B-59 fires, at QRE reach about 1e-29), so each role's regrets are
 summed over its information sets weighted by the true-game QRE's reach: the regret it
 meets per episode along the QRE's paths, in goal units.
 **Aliasing** counts, per agent role, information sets against distinct observations: two
-information sets with one observation force one policy on both.
+information sets with one observation force one policy on both. **Consistency** is the
+converse (E52): every history in an information set must give the same observation, or
+the learner reads what the role may not know and the score of one history per set misses
+it; ``inconsistent`` counts the sets that break it (0 expected).
+The QRE benchmark reports its fixed-point **residual**, the largest gap between its play
+and the logit response to it; a residual above ``QRE_TOLERANCE`` is flagged.
 """
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
@@ -66,6 +73,7 @@ from ..state import POWERS, identity
 
 TREE_FAMILIES = ("crisis", "intervention", "alignment")
 TREMBLE = 0.01  # others' uniform tremble that defines beliefs off the played path
+QRE_TOLERANCE = 1e-3  # a QRE benchmark with a larger fixed-point residual is flagged
 
 
 class OptionPolicy(Protocol):
@@ -109,12 +117,16 @@ class TreeReport:
     historical_label: str | None
     scores: dict[str, PolicyScore]  # "learned", "reference", "qre", "exact"
     aliasing: dict[str, tuple[int, int]] = field(default_factory=dict)  # role -> (sets, obs)
+    inconsistent: dict[str, int] = field(default_factory=dict)  # role -> sets seen two ways
+    qre_residual: float = 0.0  # the QRE benchmark's fixed-point residual
 
     def text(self) -> list[str]:
         out = [
             f"{self.event_id} from {self.entry}: {self.nodes} nodes; agent roles "
             f"{', '.join(self.agent_roles)}; historical outcome {self.historical_label}",
         ]
+        flag = " (NOT CONVERGED)" if self.qre_residual > QRE_TOLERANCE else ""
+        out.append(f"  QRE benchmark residual {self.qre_residual:.1e}{flag}")
         for name, score in self.scores.items():
             gains = ", ".join(f"{r} {g:.4f}" for r, g in score.gains.items())
             dist = ", ".join(
@@ -134,6 +146,9 @@ class TreeReport:
         if self.aliasing:
             text = ", ".join(f"{r} {s} sets/{o} obs" for r, (s, o) in self.aliasing.items())
             out.append(f"  aliasing: {text}")
+        if self.inconsistent:
+            text = ", ".join(f"{r} {n}" for r, n in self.inconsistent.items())
+            out.append(f"  sets with more than one observation: {text}")
         return out
 
 
@@ -144,10 +159,9 @@ def tree_root(game: Any) -> GameState:
     return root
 
 
-def representatives(root: GameState, roles: Sequence[str]) -> dict[Hashable, GameState]:
-    """One state per information set of *roles*, by depth-first expansion."""
+def decision_states(root: GameState, roles: Sequence[str]) -> Iterator[tuple[str, GameState]]:
+    """Every decision state of *roles* with its role, by depth-first expansion."""
 
-    found: dict[Hashable, GameState] = {}
     stack = [root.clone()]
     while stack:
         state = stack.pop()
@@ -159,12 +173,35 @@ def representatives(root: GameState, roles: Sequence[str]) -> dict[Hashable, Gam
         else:
             actions = list(state.legal_actions())
             if player in roles:
-                found.setdefault(state.information_state(player), state)
+                yield player, state
         for action in actions:
             child = state.clone()
             child.apply_action(action)
             stack.append(child)
+
+
+def representatives(root: GameState, roles: Sequence[str]) -> dict[Hashable, GameState]:
+    """One state per information set of *roles*."""
+
+    found: dict[Hashable, GameState] = {}
+    for player, state in decision_states(root, roles):
+        found.setdefault(state.information_state(player), state)
     return found
+
+
+def inconsistent_sets(
+    engine: CampaignEngine, event_id: str, root: GameState, roles: Sequence[str]
+) -> dict[str, int]:
+    """Per role, the information sets whose histories give it more than one observation."""
+
+    seen: dict[tuple[str, Hashable], set[bytes]] = {}
+    for player, state in decision_states(root, roles):
+        obs = np.asarray(engine.observe_subgame(event_id, state, player), dtype=np.float32)
+        seen.setdefault((player, state.information_state(player)), set()).add(obs.tobytes())
+    counts = dict.fromkeys(roles, 0)
+    for (role, _), observations in seen.items():
+        counts[role] += len(observations) > 1
+    return counts
 
 
 def tree_report(
@@ -204,13 +241,16 @@ def tree_report(
         else cfr_plus(tree, iterations=cfr_iterations).average_policy
     )
     tau = engine.config.baseline_temperature if qre_temperature is None else qre_temperature
-    qre = logit_qre(tree, temperature=tau).policy
+    solved = logit_qre(tree, temperature=tau)
+    qre = solved.policy
     agent_roles = tuple(r for r in tree.roles if r in POWERS and r in agents)
     world = engine.world
     label = major.historical_outcome
     policies: dict[str, TreePolicy] = {"reference": reference, "qre": qre, "exact": exact}
     aliasing: dict[str, tuple[int, int]] = {}
+    inconsistent: dict[str, int] = {}
     if policy is not None:
+        inconsistent = inconsistent_sets(engine, event_id, root, agent_roles)
         states = representatives(root, agent_roles)
         learned = [list(p) for p in reference]
         seen: dict[str, set[bytes]] = {r: set() for r in agent_roles}
@@ -245,6 +285,8 @@ def tree_report(
         historical_label=label,
         scores=scores,
         aliasing=aliasing,
+        inconsistent=inconsistent,
+        qre_residual=solved.residual,
     )
 
 
@@ -367,10 +409,13 @@ def tree_entries(catalog: Catalog, entries: Mapping[str, Sequence[Entry]]) -> li
 
 
 __all__ = [
+    "QRE_TOLERANCE",
     "TREE_FAMILIES",
     "OptionPolicy",
     "PolicyScore",
     "TreeReport",
+    "decision_states",
+    "inconsistent_sets",
     "information_set_regrets",
     "qre_distance",
     "representatives",

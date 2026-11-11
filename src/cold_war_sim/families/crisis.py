@@ -535,6 +535,12 @@ class CrisisState(LoggedState):
             metrics[f"commit:{role.id}"] = (1.0 + added) / (1.0 + top)
         return Outcome(self.label, tuple(self.tags), metrics)
 
+    def _sees_report(self, actor: str, role: str) -> bool:
+        for step in self.params.steps:
+            if step.kind == "intel" and step.actor == actor:
+                return step.observers is None or role in step.observers
+        return False
+
     def observation(self, role: str) -> tuple[float, ...]:
         side = self._side(role)
         own = self.types[role]
@@ -542,7 +548,9 @@ class CrisisState(LoggedState):
             stance == "hard" and self._side(r) not in (side, "neutral")
             for r, stance in self.stance.items()
         )
-        report = next(iter(self.reports.values()), None)
+        report = next(  # only a report this role may see (E52: never another's intel)
+            (r for actor, r in self.reports.items() if self._sees_report(actor, role)), None
+        )
         return (
             self.rung / max(1, self.params.max_rung),
             {"high": 1.0, "low": 0.0}.get(own.get("resolve", ""), 0.5),
@@ -983,7 +991,13 @@ def build(config: Mapping[str, Any]) -> CrisisGame:
         raise ConfigError("crisis.script is empty")
     side_of = {role.id: role.side for role in roles}
     drawn: set[tuple[str, str]] = set()
+    report_observers: dict[str, tuple[str, ...] | None] = {}
     for step in steps:
+        if (  # one audience per role's reports (observations, E52)
+            step.kind == "intel"
+            and report_observers.setdefault(step.actor, step.observers) != step.observers
+        ):
+            raise ConfigError(f"intel about {step.actor} has two different audiences")
         if step.kind == "type":
             if step.dimension == "stakes" and (step.actor, "stakes") in drawn:
                 raise ConfigError(f"{step.actor}'s stakes are drawn twice")

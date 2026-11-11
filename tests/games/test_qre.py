@@ -5,7 +5,7 @@ import math
 import pytest
 
 from cold_war_sim.games import build_tree
-from cold_war_sim.games.algorithms import logit_qre, nash_conv
+from cold_war_sim.games.algorithms import fixed_point_residual, logit_qre, nash_conv
 from cold_war_sim.games.algorithms.qre import _counterfactual_reach, softmax
 from cold_war_sim.games.traverse import node_values
 
@@ -49,15 +49,32 @@ def test_kuhn_quantal_equilibrium_is_a_logit_fixed_point() -> None:
         assert result.policy[index] == pytest.approx(target, abs=1e-5)
 
 
+def test_the_reported_residual_is_the_fixed_point_gap() -> None:
+    # E52: with the damping at its floor, the old step-size residual read 0.001 here while
+    # the policy stood 0.2 from its own logit response
+    tree = build_tree(KuhnState())
+    result = logit_qre(tree, temperature=0.1)
+    assert result.residual == pytest.approx(fixed_point_residual(tree, result.policy, 0.1))
+    assert result.residual < 1e-6
+
+
 def test_temperature_moves_between_best_response_and_uniform() -> None:
     tree = build_tree(KuhnState())
-    cold = logit_qre(tree, temperature=0.01, iterations=3000)
+    cold = logit_qre(tree, temperature=0.05)
+    assert cold.residual < 1e-5
     assert nash_conv(tree, cold.policy).nash_conv < 0.02
     hot = logit_qre(tree, temperature=100.0)
     for probs in hot.policy:
         assert probs == pytest.approx([1.0 / len(probs)] * len(probs), abs=0.01)
     for probs in cold.policy + hot.policy:
         assert sum(probs) == pytest.approx(1.0)
+
+
+def test_an_unconverged_solve_says_so() -> None:
+    # damped iteration does not reach Kuhn's QRE at 0.01 (it mixes on near-ties); the old
+    # step-size residual reported this as converged (E52)
+    result = logit_qre(build_tree(KuhnState()), temperature=0.01)
+    assert result.residual > 1e-3
 
 
 def test_temperature_must_be_positive() -> None:

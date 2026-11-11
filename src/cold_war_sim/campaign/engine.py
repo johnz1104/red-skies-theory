@@ -21,6 +21,7 @@ All mutable data lives in :class:`EngineState`, so a snapshot is one
 from __future__ import annotations
 
 import copy
+import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -224,11 +225,24 @@ _BELIEF_POLICIES: OrderedDict[str, Policy] = OrderedDict()
 _BELIEF_LIMIT = 4
 
 
+QRE_TOLERANCE = 1e-3  # a reference QRE stopped further from its fixed point is warned about
+
+
 def _solve_tree(tree: GameTree, iterations: int, temperature: float) -> TreePolicy:
-    """Logit QRE at *temperature* > 0; otherwise exact equilibrium play."""
+    """Logit QRE at *temperature* > 0; otherwise backward induction with perfect
+    information, or CFR+'s average strategy (an equilibrium only in two-player zero-sum
+    games; in general-sum games it approaches a coarse correlated equilibrium)."""
 
     if temperature > 0.0:
-        return logit_qre(tree, temperature=temperature).policy
+        result = logit_qre(tree, temperature=temperature)
+        if result.residual > QRE_TOLERANCE:  # E52: reported, not fatal mid-campaign
+            warnings.warn(
+                f"reference QRE at temperature {temperature} stopped {result.residual:.1e} "
+                f"from its fixed point ({len(tree.nodes)} nodes)",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return result.policy
     if tree.is_perfect_information:
         return backward_induction(tree).policy
     return cfr_plus(tree, iterations=iterations, trembles=0.01).average_policy
@@ -255,9 +269,9 @@ def reference_tree_policy(
 def baseline_policy(
     family: str, config: Mapping[str, Any], iterations: int, temperature: float = 0.0
 ) -> Policy:
-    """The computer-run reference for a sub-game: exact equilibrium play, or with
-    ``temperature > 0`` a logit quantal response equilibrium (the belief-based
-    bargaining solver stays exact)."""
+    """The computer-run reference for a sub-game: equilibrium play (see
+    :func:`_solve_tree`), or with ``temperature > 0`` a logit quantal response
+    equilibrium (the belief-based bargaining solver stays exact)."""
 
     key = canonical_json(
         {"family": family, "config": config, "iterations": iterations, "temperature": temperature}
@@ -442,6 +456,12 @@ class CampaignEngine:
         if active is None:
             return ()
         return tuple(active.state.observation(role))
+
+    def pending_commits(self, power: str) -> dict[str, str]:
+        """*power*'s own strategy choices so far this year, by stage (they apply once its
+        turn is complete; other powers' stay secret until then)."""
+
+        return dict(self.s.commits.get(power, {}))
 
     def subgame_information(self, event_id: str, role: str) -> tuple[str, ...]:
         """The log tokens of *role*'s information state in the running event."""
@@ -813,6 +833,18 @@ class CampaignEngine:
         )
 
     # ------------------------------------------------- chance-expected returns (E50)
+    def expects_scope(self) -> bool:
+        """Whether the scoped event's returns are counted in expectation: with
+        ``chance_expected``, an instant event only; a war or talks over several quarters
+        keeps its sampled ending (E52)."""
+
+        scope = self.config.scope
+        active = self.s.active.get(scope) if scope is not None else None
+        if active is None:
+            return False
+        major = self.catalog.events[active.event_id].major
+        return major is not None and self._expects(active, major)
+
     def _expects(self, active: ActiveEvent, major: MajorSpec) -> bool:
         return (
             self.config.chance_expected
@@ -1001,6 +1033,7 @@ class CampaignEngine:
             world.active.pop(event_id, None)
             world.outcomes[event_id] = outcome.label
             world.outcome_tags[event_id] = tuple(outcome.tags)
+            world.resolved[event_id] = world.quarter
             if major.region is not None and world.regions[major.region].conflict == event_id:
                 world.regions[major.region].conflict = None
             s.last_returns[event_id] = returns

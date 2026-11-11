@@ -291,6 +291,33 @@ def test_bargaining_vetoed_and_consent_values() -> None:
     assert broken.returns()["C"] == pytest.approx(-1.5)
 
 
+def test_only_the_vetoer_pays_for_its_veto() -> None:
+    # E52: a vetoed ending charged every ratifier its own veto cost
+    config = configs.bargaining_config(horizon=1, commitments=False)
+    config["consent"] = [
+        {"role": "C1", "base": -1.0, "per_share": 0.0, "veto_value": 0.0, "veto_cost": 0.3},
+        {"role": "C2", "base": -1.0, "per_share": 0.0, "veto_value": 0.0, "veto_cost": 0.5},
+    ]
+    game = bargaining.build(config)
+    returns = {}
+    for path in (("ratify", "veto"), ("veto",)):
+        state = game.new_initial_state()
+        for action in ("offer_050", "accept", *path):
+            state.apply_action(action)
+        assert state.outcome().label == "vetoed"
+        returns[path] = state.returns()
+    assert returns[("ratify", "veto")]["C1"] == pytest.approx(0.0)
+    assert returns[("ratify", "veto")]["C2"] == pytest.approx(-0.5)
+    assert returns[("veto",)]["C1"] == pytest.approx(-0.3)
+    assert returns[("veto",)]["C2"] == pytest.approx(0.0)
+    # both would rather veto than agree, so the first leaves the veto (and its cost) to C2
+    assert bargaining.ratify_choices(game.params.consent, 0.5) == (True, False)
+    state = game.new_initial_state()
+    for action in ("offer_050", "accept"):
+        state.apply_action(action)
+    assert bargaining.BargainingEquilibriumPolicy(game).action_probabilities(state)["ratify"] == 1.0
+
+
 def test_intervention_solves_and_reports_tags() -> None:
     game = intervention.build(configs.intervention_config())
     tree = build_tree(game.new_initial_state())

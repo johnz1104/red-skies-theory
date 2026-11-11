@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 
 from cold_war_sim.families import ConfigError, attrition, bargaining
-from cold_war_sim.games import CHANCE
+from cold_war_sim.games import CHANCE, build_tree
+from cold_war_sim.games.algorithms import logit_qre
 
 from . import configs
 
@@ -61,3 +62,44 @@ def test_bargaining_belief_solver_ignores_the_temperature() -> None:
     game = bargaining.build(config)
     policy = bargaining.BargainingEquilibriumPolicy(game, temperature=0.3)
     assert policy.beliefs is not None and policy.logit is None
+
+
+# ratifiers that disagree about the share: the first's approval counts only if the later
+# ones approve too, which they often do not (E52); the third pays for its own veto
+RATIFIERS = [
+    {"role": "C1", "base": -0.2, "per_share": 1.0, "veto_value": 0.0},
+    {"role": "C2", "base": 0.3, "per_share": -0.6, "veto_value": 0.0},
+    {"role": "C3", "base": 0.1, "per_share": 0.0, "veto_value": 0.2, "veto_cost": 0.4},
+]
+
+
+@pytest.mark.parametrize("ratifiers", [1, 2, 3])
+def test_bargaining_logit_matches_the_generic_tree_qre(ratifiers: int) -> None:
+    config = configs.bargaining_config(horizon=2)
+    config["consent"] = RATIFIERS[:ratifiers]
+    game = bargaining.build(config)
+    tau = 0.3
+    tree = build_tree(game.new_initial_state())
+    assert tree.is_perfect_information
+    generic = logit_qre(tree, temperature=tau).policy  # logit backward induction
+    special = bargaining.BargainingEquilibriumPolicy(game, temperature=tau)
+    stack, checked = [game.new_initial_state()], 0
+    while stack:
+        state = stack.pop()
+        player = state.current_player()
+        if state.is_terminal():
+            continue
+        if player == CHANCE:
+            actions = [a for a, p in state.chance_outcomes() if p > 0.0]
+        else:
+            actions = list(state.legal_actions())
+            index = tree.infoset_index[state.information_state(player)]
+            dist = special.action_probabilities(state)
+            expected = dict(zip(tree.infosets[index].actions, generic[index], strict=True))
+            assert dist == pytest.approx(expected, abs=1e-9)
+            checked += 1
+        for action in actions:
+            child = state.clone()
+            child.apply_action(action)
+            stack.append(child)
+    assert checked == len(tree.infosets)
