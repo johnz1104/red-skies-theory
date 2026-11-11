@@ -5,8 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from cold_war_sim.campaign import CampaignEngine, Catalog, EngineConfig, audit
-from cold_war_sim.campaign.policies import DOCTRINES, DoctrinePolicy
+from cold_war_sim.campaign import CampaignEngine, Catalog, EngineConfig
+from cold_war_sim.campaign.decisions.policies import DOCTRINES, DoctrinePolicy
+from cold_war_sim.evaluation import audit
 
 
 def test_doctrines_choose_their_strategy_and_defer_elsewhere(fixture_catalog: Catalog) -> None:

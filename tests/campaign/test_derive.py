@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import math
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -16,17 +15,16 @@ from cold_war_sim.campaign import (
     EngineConfig,
     EquilibriumPolicy,
     RandomPolicy,
-    calendar,
-    derive,
-    goalcheck,
-    goals,
     load_catalog,
     run_episode,
 )
-from cold_war_sim.campaign.effects import EffectContext
+from cold_war_sim.campaign.catalog.effects import EffectContext
+from cold_war_sim.campaign.payoffs import derive, goals
+from cold_war_sim.campaign.world import calendar
+from cold_war_sim.evaluation import goalcheck
 from cold_war_sim.families import build_family
 
-from .conftest import FIXTURE_EVENTS
+from ..conftest import FIXTURE_EVENTS
 
 
 def _derived_catalog(
@@ -159,7 +157,7 @@ def test_follow_on_events_count_at_their_discounted_chance(tmp_path: Path) -> No
     assert valuer._chance(blocked, after_b) == 0.0  # b_prevails sets crisis_won
     assert valuer._chance(catalog.events["fx_far"], after_a) == 0.0  # beyond the lookahead
 
-    flat = replace(catalog.goals, lookahead_quarters=0)
+    flat = catalog.goals.replace(lookahead_quarters=0)
     with_follow = derive.apply(catalog, event, world, major.bound_config(world))
     without = derive.apply(catalog, event, world, major.bound_config(world), flat)
     usa_with, usa_without = with_follow["roles"]["USA"]["values"], without["roles"]["USA"]["values"]

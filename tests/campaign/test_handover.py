@@ -12,14 +12,14 @@ from cold_war_sim.campaign import (
     ColdWarEnv,
     EngineConfig,
     HistoricalPolicy,
-    calendar,
-    goals,
     load_catalog,
     run_episode,
 )
-from cold_war_sim.campaign.state import identity
+from cold_war_sim.campaign.payoffs import goals
+from cold_war_sim.campaign.world import calendar
+from cold_war_sim.campaign.world.state import identity
 
-from .conftest import FIXTURE_EVENTS
+from ..conftest import FIXTURE_EVENTS
 
 HANDOVER = [
     {"regime": {"power": "PRC", "to": "kmt"}},

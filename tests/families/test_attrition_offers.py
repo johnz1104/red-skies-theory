@@ -8,10 +8,10 @@ from typing import Any
 import pytest
 
 from cold_war_sim.families import ConfigError, attrition
-from cold_war_sim.families.attrition_beliefs import AttritionBeliefPolicy
+from cold_war_sim.families.attrition import AttritionBeliefPolicy
 from cold_war_sim.games import CHANCE
-from cold_war_sim.games.algorithms import nash_conv
-from cold_war_sim.games.traverse import uniform_policy
+from cold_war_sim.games.solvers import nash_conv
+from cold_war_sim.games.tree import uniform_policy
 
 from . import configs
 from .test_bargaining_beliefs import tree_policy

@@ -8,11 +8,11 @@ from typing import Any
 import pytest
 
 from cold_war_sim.families import ConfigError, alignment, bargaining
-from cold_war_sim.families.bargaining_beliefs import BeliefPolicy
+from cold_war_sim.families.bargaining.beliefs import BeliefPolicy
 from cold_war_sim.games import CHANCE, TERMINAL, build_tree, expected_returns
-from cold_war_sim.games.algorithms import cfr_plus, nash_conv
 from cold_war_sim.games.policy import tabular_from_tree
-from cold_war_sim.games.traverse import reach_probabilities
+from cold_war_sim.games.solvers import cfr_plus, nash_conv
+from cold_war_sim.games.tree import reach_probabilities
 
 from . import configs
 

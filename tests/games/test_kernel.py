@@ -14,14 +14,14 @@ from cold_war_sim.games import (
     sample_action,
     tabular_from_tree,
 )
-from cold_war_sim.games.algorithms import (
+from cold_war_sim.games.solvers import (
     NotPerfectInformationError,
     backward_induction,
     best_response,
     cfr_plus,
     nash_conv,
 )
-from cold_war_sim.games.traverse import TreeTooLargeError, uniform_policy
+from cold_war_sim.games.tree import TreeTooLargeError, uniform_policy
 
 from .fixtures import KuhnState, MatchingPenniesState, UltimatumState
 

@@ -19,14 +19,14 @@ from cold_war_sim.campaign import (
     EngineConfig,
     HistoricalPolicy,
     RandomPolicy,
-    calendar,
     load_catalog,
     run_episode,
 )
-from cold_war_sim.campaign.director import run_director
-from cold_war_sim.campaign.engine import Phase
+from cold_war_sim.campaign.engine.core import Phase
+from cold_war_sim.campaign.events.director import run_director
+from cold_war_sim.campaign.world import calendar
 
-from .conftest import FIXTURE_EVENTS
+from ..conftest import FIXTURE_EVENTS
 
 
 def test_random_rollouts_reach_the_end(fixture_catalog: Catalog) -> None:

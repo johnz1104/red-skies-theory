@@ -9,8 +9,8 @@ from cold_war_sim.campaign import (
     HistoricalPolicy,
     RandomPolicy,
     run_episode,
-    standing,
 )
+from cold_war_sim.campaign.payoffs import standing
 from cold_war_sim.games import Outcome
 
 

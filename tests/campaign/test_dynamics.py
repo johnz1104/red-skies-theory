@@ -7,7 +7,7 @@ import copy
 import pytest
 
 from cold_war_sim.campaign import Catalog
-from cold_war_sim.campaign.dynamics import DT, DynamicsParams, step
+from cold_war_sim.campaign.world.dynamics import DT, DynamicsParams, step
 
 
 def _world(catalog: Catalog):  # type: ignore[no-untyped-def]

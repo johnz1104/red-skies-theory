@@ -9,13 +9,13 @@ from typing import Any
 import pytest
 import yaml
 
-from cold_war_sim.campaign import contract
-from cold_war_sim.campaign.catalog import CatalogError, load_catalog
-from cold_war_sim.campaign.conditions import CompileContext
-from cold_war_sim.campaign.dynamics import DynamicsParams, step
-from cold_war_sim.campaign.effects import EffectContext, compile_effects
+from cold_war_sim.campaign.catalog import contract
+from cold_war_sim.campaign.catalog.conditions import CompileContext
+from cold_war_sim.campaign.catalog.core import CatalogError, load_catalog
+from cold_war_sim.campaign.catalog.effects import EffectContext, compile_effects
+from cold_war_sim.campaign.world.dynamics import DynamicsParams, step
 
-from .conftest import FIXTURE_EVENTS
+from ..conftest import FIXTURE_EVENTS
 
 CRISIS = {
     "id": "fx_contract_crisis",

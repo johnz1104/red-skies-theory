@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from cold_war_sim.campaign import calendar
-from cold_war_sim.campaign.conditions import CompileContext, ConditionError, compile_condition
-from cold_war_sim.campaign.effects import EffectContext, LeaderSpec, compile_effects
-from cold_war_sim.campaign.paths import PathError, compile_path
-from cold_war_sim.campaign.state import NEUTRAL, POWERS, default_world
+from cold_war_sim.campaign.catalog.conditions import (
+    CompileContext,
+    ConditionError,
+    compile_condition,
+)
+from cold_war_sim.campaign.catalog.effects import EffectContext, LeaderSpec, compile_effects
+from cold_war_sim.campaign.catalog.paths import PathError, compile_path
+from cold_war_sim.campaign.world import calendar
+from cold_war_sim.campaign.world.state import NEUTRAL, POWERS, default_world
 
 
 def test_calendar_round_trip() -> None:

@@ -17,15 +17,15 @@ from cold_war_sim.campaign import (
     EquilibriumPolicy,
     HistoricalPolicy,
     RandomPolicy,
-    calendar,
     load_catalog,
     run_episode,
 )
 from cold_war_sim.campaign.assumptions import Sampling, check
 from cold_war_sim.campaign.assumptions import render_markdown as render_register
-from cold_war_sim.campaign.catalog_doc import render_markdown
-from cold_war_sim.campaign.cli import main
-from cold_war_sim.campaign.state import IDENTITIES, identity
+from cold_war_sim.campaign.catalog.markdown import render_markdown
+from cold_war_sim.campaign.world import calendar
+from cold_war_sim.campaign.world.state import IDENTITIES, identity
+from cold_war_sim.cli.main import main
 
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "EVENT_CATALOG.md"
 REGISTER_DOC = Path(__file__).resolve().parents[2] / "docs" / "ASSUMPTIONS.md"
@@ -345,7 +345,7 @@ def test_korea_after_the_armistice(catalog: Catalog, historical_run: CampaignEng
 
 
 def test_every_tier_one_event_plays_as_a_scenario(catalog: Catalog) -> None:
-    from cold_war_sim.campaign.scenario import ScenarioEnv, capture_entries
+    from cold_war_sim.campaign.environments.scenario import ScenarioEnv, capture_entries
 
     tier1 = [e for e in catalog.major_ids if (m := catalog.events[e].major) and m.tier == 1]
     entries = capture_entries(catalog, tier1)

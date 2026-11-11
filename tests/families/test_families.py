@@ -26,8 +26,8 @@ from cold_war_sim.games import (
     outcome_distribution,
     sample_action,
 )
-from cold_war_sim.games.algorithms import backward_induction, cfr_plus, nash_conv
-from cold_war_sim.games.traverse import TERMINAL_NODE
+from cold_war_sim.games.solvers import backward_induction, cfr_plus, nash_conv
+from cold_war_sim.games.tree import TERMINAL_NODE
 
 from . import configs
 
@@ -478,7 +478,7 @@ def test_attrition_weariness_forces_withdrawal() -> None:
 def test_expected_returns_are_consistent_with_rollouts() -> None:
     game = intervention.build(configs.intervention_config())
     tree = build_tree(game.new_initial_state())
-    from cold_war_sim.games.traverse import uniform_policy
+    from cold_war_sim.games.tree import uniform_policy
 
     exact = expected_returns(tree, uniform_policy(tree))
     rng = np.random.default_rng(0)

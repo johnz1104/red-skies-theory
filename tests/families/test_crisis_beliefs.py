@@ -8,11 +8,11 @@ from typing import Any
 import pytest
 
 from cold_war_sim.families import ConfigError, crisis
-from cold_war_sim.families.crisis_beliefs import CrisisBeliefPolicy
+from cold_war_sim.families.crisis import CrisisBeliefPolicy
 from cold_war_sim.games import CHANCE, build_tree
-from cold_war_sim.games.algorithms.qre import logit_qre
 from cold_war_sim.games.policy import tabular_from_tree
-from cold_war_sim.games.traverse import GameTree, TreePolicy
+from cold_war_sim.games.solvers.qre import logit_qre
+from cold_war_sim.games.tree import GameTree, TreePolicy
 
 from .configs import crisis_values
 

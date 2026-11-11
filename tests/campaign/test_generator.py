@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import copy
 from collections import Counter
-from dataclasses import replace
 
 import pytest
 
-from cold_war_sim.campaign import calendar, generator, genfit
-from cold_war_sim.campaign.catalog import Catalog, CatalogError, load_catalog
-from cold_war_sim.campaign.engine import CampaignEngine, EngineConfig, run_episode
-from cold_war_sim.campaign.policies import make_policy
-from cold_war_sim.campaign.state import WorldState
+from cold_war_sim.campaign.catalog.core import Catalog, CatalogError, load_catalog
+from cold_war_sim.campaign.decisions.policies import make_policy
+from cold_war_sim.campaign.engine.core import CampaignEngine, EngineConfig, run_episode
+from cold_war_sim.campaign.events import generator, genfit
+from cold_war_sim.campaign.world import calendar
+from cold_war_sim.campaign.world.state import WorldState
 
 
 @pytest.fixture(scope="module")
@@ -116,7 +116,7 @@ def test_proposals_are_deterministic_and_respect_one_per_region(catalog: Catalog
     for spec in doc["templates"].values():
         spec["rate"] = 1.0  # every candidate fires
     doc["hazard_cap"] = 1.0
-    hot = replace(catalog, raw=replace(raw, generator=doc))
+    hot = catalog.replace(raw=raw.replace(generator=doc))
     world = hostile_world(catalog)
     first = generator.propose(hot, world, seed=7)
     assert first == generator.propose(hot, world, seed=7)
@@ -152,7 +152,7 @@ def test_an_unknown_generated_id_is_a_catalog_error(catalog: Catalog) -> None:
 def test_the_strategy_turn_offers_challenges_only_against_a_hostile_leader(
     catalog: Catalog,
 ) -> None:
-    from cold_war_sim.campaign import strategic
+    from cold_war_sim.campaign.decisions import strategic
 
     world = hostile_world(catalog)
     region = max(world.regions, key=lambda r: world.regions[r].influence["USSR"])

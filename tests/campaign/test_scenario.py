@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+import pickle
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from cold_war_sim.campaign import POWERS, Catalog
-from cold_war_sim.campaign import engine as engine_module
-from cold_war_sim.campaign.engine import (
+from cold_war_sim.campaign.decisions.policies import HistoricalPolicy, make_policy
+from cold_war_sim.campaign.engine import core as engine_module
+from cold_war_sim.campaign.engine.core import (
     CampaignEngine,
     EngineConfig,
     reference_tree_policy,
     run_episode,
 )
-from cold_war_sim.campaign.policies import HistoricalPolicy, make_policy
-from cold_war_sim.campaign.scenario import (
+from cold_war_sim.campaign.environments.scenario import (
     Entry,
     ScenarioEnv,
     capture_entries,
@@ -26,7 +26,7 @@ from cold_war_sim.campaign.scenario import (
 )
 from cold_war_sim.families import build_family
 from cold_war_sim.games import build_tree
-from cold_war_sim.games.traverse import expected_returns
+from cold_war_sim.games.tree import expected_returns
 
 EVENTS = ("fx_civil_war", "fx_crisis", "fx_alignment", "fx_canal")
 
@@ -193,16 +193,78 @@ def test_entries_pickle(fixture_catalog: Catalog, tmp_path: Path) -> None:
     assert all(e.source == "campaign" for e in campaign["fx_crisis"])
 
 
+def test_entries_saved_before_module_consolidation_still_play(
+    fixture_catalog: Catalog, tmp_path: Path
+) -> None:
+    events = (*EVENTS, "fx_talks")
+    entries = capture_entries(fixture_catalog, events, playable_tier=None)
+    data = pickle.dumps(entries, protocol=0)
+    # Protocol 0 stores module and class names as text. Recreate the names used
+    # by existing entry files while keeping their state fields unchanged.
+    earlier_names = {
+        ("campaign.world.state", "WorldState"): "campaign.state",
+        ("campaign.environments.scenario", "Entry"): "campaign.scenario",
+        ("families.attrition.game", "AttritionState"): "families.attrition.state",
+        ("families.bargaining.game", "BargainingParams"): "families.bargaining.params",
+        ("families.bargaining.game", "SideParams"): "families.bargaining.params",
+        ("campaign.engine.state", "Phase"): "campaign.engine.config",
+        ("families.alignment", "AlignmentParams"): "families.alignment.params",
+        ("families.alignment", "Client"): "families.alignment.params",
+        ("families.alignment", "Patron"): "families.alignment.params",
+        ("families.alignment", "AlignmentState"): "families.alignment.game",
+        ("families.intervention", "InterventionParams"): "families.intervention.params",
+        ("families.intervention", "InterventionState"): "families.intervention.game",
+        ("families.crisis.params", "CrisisRole"): "families.crisis.roles",
+        ("families.crisis.params", "MoveOption"): "families.crisis.options",
+        ("families.crisis.params", "SignalOption"): "families.crisis.options",
+        ("families.crisis.params", "PartnerOption"): "families.crisis.options",
+    }
+    for (module, name), earlier in earlier_names.items():
+        data = data.replace(
+            f"ccold_war_sim.{module}\n{name}\n".encode(),
+            f"ccold_war_sim.{earlier}\n{name}\n".encode(),
+        )
+    path = tmp_path / "earlier_entries.pkl"
+    path.write_bytes(data)
+    loaded = load_entries(path)
+    original = ScenarioEnv(entries, fixture_catalog)
+    restored = ScenarioEnv(loaded, fixture_catalog)
+    for event in events:
+        original.reset(7, event=event)
+        restored.reset(7, event=event)
+        assert _play(original, np.random.default_rng(8)) == _play(
+            restored, np.random.default_rng(8)
+        )
+        assert original.engine.trace_hash() == restored.engine.trace_hash()
+        assert original.returns() == restored.returns()
+
+
 def test_entries_from_another_catalog_are_refused(fixture_catalog: Catalog) -> None:
     entries = capture_entries(fixture_catalog, ["fx_crisis"], playable_tier=None)
     assert all(e.catalog == fixture_catalog.digest for e in entries["fx_crisis"])
     ScenarioEnv(entries, fixture_catalog)
-    stale = {"fx_crisis": [replace(entries["fx_crisis"][0], catalog="")]}
+    stale = {"fx_crisis": [entries["fx_crisis"][0].replace(catalog="")]}
     with pytest.raises(ValueError, match="recapture"):
         ScenarioEnv(stale, fixture_catalog)
-    old = {"fx_crisis": [replace(entries["fx_crisis"][0], format=1)]}  # before E52's layout
+    old = {"fx_crisis": [entries["fx_crisis"][0].replace(format=1)]}  # before E52's layout
     with pytest.raises(ValueError, match="older code"):
         ScenarioEnv(old, fixture_catalog)
+
+
+@pytest.mark.parametrize(
+    "stale",
+    [
+        b"ccold_war_sim.families.crisis\nStep\n.",  # a class that no longer exists
+        b"ccold_war_sim.families.crisis_beliefs\nCrisisBeliefPolicy\n.",  # a module that moved
+    ],
+)
+def test_an_entry_file_from_older_code_asks_to_be_recaptured(stale: bytes, tmp_path: Path) -> None:
+    # entries pickle classes as they were when saved; a file that names a class or module
+    # the code no longer has must say what to do, not fail inside pickle
+    path = tmp_path / "old_entries.pkl"
+    path.write_bytes(stale)
+    with pytest.raises(ValueError, match="recapture"):
+        load_entries(path)
 
 
 def _uniform_play(

@@ -8,7 +8,7 @@ import pytest
 
 from cold_war_sim.families import ConfigError, attrition, bargaining
 from cold_war_sim.games import CHANCE, build_tree
-from cold_war_sim.games.algorithms import logit_qre
+from cold_war_sim.games.solvers import logit_qre
 
 from . import configs
 

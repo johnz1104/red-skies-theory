@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 
 import pytest
@@ -13,13 +12,17 @@ from cold_war_sim.campaign import (
     EngineConfig,
     EquilibriumPolicy,
     HistoricalPolicy,
-    calendar,
-    derive,
     load_catalog,
     run_episode,
 )
-from cold_war_sim.campaign.conditions import CompileContext, ConditionError, compile_condition
-from cold_war_sim.campaign.derive import Valuer, decision_values
+from cold_war_sim.campaign.catalog.conditions import (
+    CompileContext,
+    ConditionError,
+    compile_condition,
+)
+from cold_war_sim.campaign.payoffs import derive
+from cold_war_sim.campaign.payoffs.derive import Valuer, decision_values
+from cold_war_sim.campaign.world import calendar
 
 FIXTURE = Path(__file__).with_name("fixture_decisions.yaml")
 
@@ -140,7 +143,7 @@ def test_decision_values_count_the_war_a_withdrawal_enables(catalog: Catalog) ->
     expected = derive._expected_value(catalog, war, after, "USA", catalog.goals)
     assert values["keep_garrison"] == pytest.approx(0.0)
     assert values["withdraw"] == pytest.approx(round(goal_only + change * expected, 2))
-    quiet = dataclasses.replace(catalog.goals, lookahead_quarters=0)
+    quiet = catalog.goals.replace(lookahead_quarters=0)
     assert decision_values(catalog, event, world, quiet)["withdraw"] == pytest.approx(
         valuer.value(after, "USA")
     )

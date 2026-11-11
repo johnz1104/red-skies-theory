@@ -7,10 +7,12 @@ from typing import NoReturn
 
 import pytest
 
-import cold_war_sim.campaign as campaign
-from cold_war_sim.campaign import cli
+import cold_war_sim
+from cold_war_sim.cli import analysis as cli_analysis
+from cold_war_sim.cli import main as cli
+from cold_war_sim.cli import rl as cli_rl
 
-RL = "cold_war_sim.campaign.rl"
+RL = "cold_war_sim.rl"
 
 
 def _hide(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
@@ -18,7 +20,7 @@ def _hide(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
 
     for module in [m for m in sys.modules if m == RL or m.startswith(RL + ".")]:
         monkeypatch.delitem(sys.modules, module)
-    monkeypatch.delattr(campaign, "rl", raising=False)
+    monkeypatch.delattr(cold_war_sim, "rl", raising=False)
     monkeypatch.setitem(sys.modules, name, None)
 
 
@@ -40,9 +42,9 @@ def _missing(name: str) -> NoReturn:
 
 def test_other_missing_modules_still_raise(monkeypatch: pytest.MonkeyPatch) -> None:
     # outside the rl commands, or a module the RL install does not provide
-    monkeypatch.setattr(cli, "cmd_assumptions_check", lambda args: _missing("torch"))
+    monkeypatch.setattr(cli_analysis, "cmd_assumptions_check", lambda args: _missing("torch"))
     with pytest.raises(ModuleNotFoundError):
         cli.main(["assumptions", "check"])
-    monkeypatch.setattr(cli, "cmd_rl_eval", lambda args: _missing("yaml"))
+    monkeypatch.setattr(cli_rl, "cmd_rl_eval", lambda args: _missing("yaml"))
     with pytest.raises(ModuleNotFoundError):
         cli.main(["rl", "eval", "--checkpoint", "missing.pt"])

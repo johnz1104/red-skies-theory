@@ -14,22 +14,22 @@ from cold_war_sim.campaign import (
     CatalogError,
     EngineConfig,
     RandomPolicy,
-    calendar,
-    goals,
     load_catalog,
     run_episode,
 )
-from cold_war_sim.campaign.catalog import data_root
-from cold_war_sim.campaign.conditions import CompileContext, compile_condition
-from cold_war_sim.campaign.effects import (
+from cold_war_sim.campaign.catalog.conditions import CompileContext, compile_condition
+from cold_war_sim.campaign.catalog.core import data_root
+from cold_war_sim.campaign.catalog.effects import (
     EffectContext,
     apply_leader,
     compile_effects,
     shift_influence,
 )
-from cold_war_sim.campaign.state import identity
+from cold_war_sim.campaign.payoffs import goals
+from cold_war_sim.campaign.world import calendar
+from cold_war_sim.campaign.world.state import identity
 
-from .conftest import FIXTURE_EVENTS
+from ..conftest import FIXTURE_EVENTS
 
 
 def test_threat_weight_counts_rivals_more_than_allies(fixture_catalog: Catalog) -> None:
@@ -163,7 +163,7 @@ def test_a_weight_switch_alone_gives_no_reward(fixture_catalog: Catalog) -> None
 
 
 def test_an_insurgency_pays_for_its_war_effort(fixture_catalog: Catalog) -> None:
-    from cold_war_sim.campaign.dynamics import DynamicsParams, step
+    from cold_war_sim.campaign.world.dynamics import DynamicsParams, step
 
     params = DynamicsParams.from_catalog(fixture_catalog)
     world = fixture_catalog.initial_world()
@@ -258,7 +258,7 @@ def test_buffer_regions_count_toward_security(fixture_catalog: Catalog) -> None:
 
 
 def test_end_bonuses_belong_to_the_score_reward_only(fixture_catalog: Catalog) -> None:
-    from cold_war_sim.campaign import rewards
+    from cold_war_sim.campaign.payoffs import rewards
 
     world = fixture_catalog.initial_world()
     world.ended = "ussr_dissolved"

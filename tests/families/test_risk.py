@@ -9,7 +9,7 @@ import pytest
 from cold_war_sim.families import ConfigError, crisis, intervention
 from cold_war_sim.families.common import prospect
 from cold_war_sim.games import CHANCE, build_tree, outcome_distribution
-from cold_war_sim.games.algorithms.qre import logit_qre
+from cold_war_sim.games.solvers.qre import logit_qre
 
 from .configs import intervention_config
 

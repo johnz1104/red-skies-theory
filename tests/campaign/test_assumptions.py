@@ -21,12 +21,12 @@ from cold_war_sim.campaign.assumptions import (
     parse_register,
     plan,
 )
-from cold_war_sim.campaign.catalog import CatalogError, get_number, split_address
-from cold_war_sim.campaign.policies import HistoricalPolicy, RandomPolicy
-from cold_war_sim.campaign.robustness import Finding, FindingResult, spearman
-from cold_war_sim.campaign.serialization import stable_hash
+from cold_war_sim.campaign.catalog.core import CatalogError, get_number, split_address
+from cold_war_sim.campaign.decisions.policies import HistoricalPolicy, RandomPolicy
+from cold_war_sim.campaign.engine.reproducibility import stable_hash
+from cold_war_sim.evaluation.robustness import Finding, FindingResult, spearman
 
-from .conftest import FIXTURE_EVENTS
+from ..conftest import FIXTURE_EVENTS
 
 RANGES = {
     "judgment": {"factor": 2.0, "logit": 1.0, "intercept": 0.25},

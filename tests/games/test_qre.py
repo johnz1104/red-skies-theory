@@ -5,9 +5,9 @@ import math
 import pytest
 
 from cold_war_sim.games import build_tree
-from cold_war_sim.games.algorithms import fixed_point_residual, logit_qre, nash_conv
-from cold_war_sim.games.algorithms.qre import _counterfactual_reach, softmax
-from cold_war_sim.games.traverse import node_values
+from cold_war_sim.games.solvers import fixed_point_residual, logit_qre, nash_conv
+from cold_war_sim.games.solvers.qre import softmax
+from cold_war_sim.games.tree import counterfactual_reach, node_values
 
 from .fixtures import KuhnState, MatchingPenniesState, UltimatumState
 
@@ -39,7 +39,7 @@ def test_kuhn_quantal_equilibrium_is_a_logit_fixed_point() -> None:
     assert result.residual < 1e-7
     values = node_values(tree, result.policy)
     for index, info in enumerate(tree.infosets):
-        reach = _counterfactual_reach(tree, result.policy, info.role)
+        reach = counterfactual_reach(tree, result.policy, info.role)
         totals = [0.0] * len(info.actions)
         weight = sum(reach[n] for n in info.nodes)
         for n in info.nodes:

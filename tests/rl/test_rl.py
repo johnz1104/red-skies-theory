@@ -15,18 +15,20 @@ import torch
 from pettingzoo.test import api_test
 
 from cold_war_sim.campaign import Catalog
-from cold_war_sim.campaign.engine import EngineConfig
-from cold_war_sim.campaign.rl import evaluate, ppo
-from cold_war_sim.campaign.rl.pz import CampaignAEC
-from cold_war_sim.campaign.scenario import (
+from cold_war_sim.campaign.engine.core import EngineConfig
+from cold_war_sim.campaign.environments.scenario import (
     Entry,
     ScenarioEnv,
     capture_entries,
     save_entries,
 )
+from cold_war_sim.campaign.world.state import IDENTITIES
+from cold_war_sim.evaluation import learned_play as evaluate
 from cold_war_sim.families import build_family
 from cold_war_sim.games import build_tree
-from cold_war_sim.games.algorithms import nash_conv
+from cold_war_sim.games.solvers import nash_conv
+from cold_war_sim.rl import ppo, rollouts
+from cold_war_sim.rl.pz import CampaignAEC
 
 TREE_EVENTS = ("fx_crisis", "fx_canal", "fx_uprising")
 Entries = dict[str, list[Entry]]
@@ -87,7 +89,7 @@ def test_path_regret_discounts_regret_off_the_qre_paths(
 def test_reference_exploitability_matches_nash_conv(
     fixture_catalog: Catalog, entries: Entries
 ) -> None:
-    from cold_war_sim.campaign.engine import CampaignEngine, reference_tree_policy
+    from cold_war_sim.campaign.engine.core import CampaignEngine, reference_tree_policy
 
     entry = entries["fx_crisis"][0]
     report = evaluate.tree_report(fixture_catalog, entry, None)
@@ -177,7 +179,7 @@ def test_checkpoints_round_trip(tmp_path: Path) -> None:
 def _bandit(objective: str, q: tuple[float, float], iterations: int = 150) -> np.ndarray:
     """Repeated updates on one decision with known action values; the final policy."""
 
-    from cold_war_sim.campaign.observation import TOKEN_SLOTS
+    from cold_war_sim.campaign.environments.observation import TOKEN_SLOTS
 
     torch.manual_seed(0)
     config = ppo.PPOConfig(entries="unused.pkl", objective=objective, lr=0.01, temperature=0.1)
@@ -291,14 +293,14 @@ def test_frozen_identities_keep_their_normalizers(
     config = ppo.PPOConfig(entries="unused.pkl", seed=2, trainable=("USA",))
     learner = ppo.Learner.create(config, env.observation_size)
     before = {
-        i: (learner.obs_norms[i].state(), learner.return_norms[i].state()) for i in ppo.IDENTITIES
+        i: (learner.obs_norms[i].state(), learner.return_norms[i].state()) for i in IDENTITIES
     }
     policy = learner.policy()
     episodes = [ppo.play_episode(env, policy, s, np.random.default_rng(s)) for s in range(24)]
     learner.step(episodes)
     moved = {
         i
-        for i in ppo.IDENTITIES
+        for i in IDENTITIES
         if (learner.obs_norms[i].state(), learner.return_norms[i].state()) != before[i]
     }
     assert moved == {"USA"}
@@ -336,7 +338,7 @@ def test_a_league_opponent_plays_with_its_own_normalizer(
             super().__init__(models, norms)
             used.append({i: n.count for i, n in norms.items()})
 
-    monkeypatch.setattr(ppo, "LearnedPolicy", Recording)
+    monkeypatch.setattr(rollouts, "LearnedPolicy", Recording)
     monkeypatch.setitem(ppo._WORKER, "env", env)
     monkeypatch.setitem(ppo._WORKER, "models", {})
     weights = learner.weights()
@@ -363,14 +365,14 @@ def test_a_freestyle_campaign_plays_as_one_episode(fixture_catalog: Catalog) -> 
     learner = ppo.Learner.create(config, env.observation_size)
     episode = ppo.play_episode(env, learner.policy(), 0, np.random.default_rng(0))
     assert episode.event_id == "campaign" and episode.steps
-    assert set(episode.returns) <= set(ppo.IDENTITIES)
+    assert set(episode.returns) <= set(IDENTITIES)
     assert all(np.isfinite(r) for r in episode.returns.values())
 
 
 @pytest.mark.slow
 def test_a_best_response_reports_its_gain(tmp_path: Path) -> None:
     from cold_war_sim.campaign import load_catalog
-    from cold_war_sim.campaign.rl import br
+    from cold_war_sim.rl import br
 
     catalog = load_catalog()
     path = tmp_path / "entries.pkl"
