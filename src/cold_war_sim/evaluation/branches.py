@@ -1,7 +1,6 @@
 """Branch audit: what a set of campaigns actually did, and where they got stuck.
 
-Runs campaigns and reports, for the user's map of alternative worlds
-(``docs/BRANCHES.md``):
+Run campaigns and report their alternative histories:
 
 * each major event's firing rate and final outcomes, and each decision event's choices;
 * the most common paths through chosen events (their final outcomes, in order);
@@ -16,24 +15,39 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass, field
 
-from .catalog import Catalog
-from .engine import CampaignEngine, EngineConfig, run_episode
-from .policies import make_policy
+from ..campaign.catalog.core import Catalog
+from ..campaign.decisions.policies import make_policy
+from ..campaign.engine.core import CampaignEngine, EngineConfig, run_episode
+from ..records import Record
 
 
-@dataclass
-class BranchReport:
-    campaigns: int
-    fired: Counter[str] = field(default_factory=Counter)
-    outcomes: dict[str, Counter[str]] = field(default_factory=dict)
-    choices: dict[str, Counter[str]] = field(default_factory=dict)
-    paths: Counter[str] = field(default_factory=Counter)
-    stuck: Counter[str] = field(default_factory=Counter)
-    never: tuple[str, ...] = ()
+class BranchReport(Record):
+    """What a set of campaigns did: how often each event fired, its outcomes, and the flags
+    that were never set and the events that never fired.
+    """
+
+    def __init__(
+        self,
+        campaigns: int,
+        fired: Counter[str] | None = None,
+        outcomes: dict[str, Counter[str]] | None = None,
+        choices: dict[str, Counter[str]] | None = None,
+        paths: Counter[str] | None = None,
+        stuck: Counter[str] | None = None,
+        never: tuple[str, ...] = (),
+    ) -> None:
+        self.campaigns = campaigns
+        self.fired: Counter[str] = Counter() if fired is None else fired
+        self.outcomes: dict[str, Counter[str]] = {} if outcomes is None else outcomes
+        self.choices: dict[str, Counter[str]] = {} if choices is None else choices
+        self.paths: Counter[str] = Counter() if paths is None else paths
+        self.stuck: Counter[str] = Counter() if stuck is None else stuck
+        self.never = never
 
     def lines(self, catalog: Catalog, top: int = 12) -> list[str]:
+        """The report: major events by fired share and outcome, then the dead ends."""
+
         n = self.campaigns
         out = [f"{n} campaigns"]
         out.append("major events (fired share: final outcomes)")

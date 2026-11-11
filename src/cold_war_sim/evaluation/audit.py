@@ -1,26 +1,9 @@
 """Strategy-layer interest audit: does any yearly strategy dominate?
 
-Before RL design, the user asked (2026-10-12) whether the campaign has a single
-solved answer that every agent would converge to. Sub-games are deliberately
-small and solvable; the open question is the yearly strategy layer (posture,
-focus region and mode, diplomacy). This audit plays scripted doctrines
-(``policies.DOCTRINES``) on strategy turns, with reference play in every
-sub-game and decision event, and reports:
-
-* **unilateral deviations:** each power's goal return under each doctrine while
-  every other power follows history;
-* **dominance:** against random profiles of the other powers' doctrines, how
-  often one doctrine is a power's best, the margin to the runner-up in units of
-  the seed-to-seed spread, and the regret of always playing the most frequent
-  best doctrine instead of each profile's best;
-* **path diversity:** how many distinct paths the runs take through the tier-1
-  events, and their entropy.
-
-Returns are goal returns per identity (the RL reward), on common random numbers:
-every doctrine sees the same seeds. Under the goal reward there are no end bonuses
-(E33); under ``reward="score"`` the report also gives returns net of them, since
-the Soviet dissolution's bonuses dwarf the strategy effects (E32). The dissolution
-rate is reported separately.
+Each power plays each scripted doctrine on its strategy turns while the other powers play
+random doctrine profiles, with reference play in the sub-games. A doctrine that is best
+against every profile dominates; a real trade-off should not be dominated in every
+plausible world.
 """
 
 from __future__ import annotations
@@ -30,14 +13,14 @@ import os
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, field
 
 import numpy as np
 
-from .catalog import Catalog
-from .engine import CampaignEngine, EngineConfig, run_episode
-from .policies import DOCTRINES, DoctrinePolicy
-from .state import POWERS
+from ..campaign.catalog.core import Catalog
+from ..campaign.decisions.policies import DOCTRINES, DoctrinePolicy
+from ..campaign.engine.core import CampaignEngine, EngineConfig, run_episode
+from ..campaign.world.state import POWERS
+from ..records import Record
 
 Profile = tuple[tuple[str, str], ...]  # (power, doctrine) for every power
 Job = tuple[str, int, Profile, int]  # (label, focal index, profile, seed)
@@ -47,8 +30,10 @@ _TIER1: tuple[str, ...] = ()
 
 
 def _init(temperature: float) -> None:
+    """Give a worker process its engine and the tier-1 event list."""
+
     global _ENGINE, _TIER1
-    from . import load_catalog
+    from ..campaign import load_catalog
 
     catalog = load_catalog()
     _ENGINE = CampaignEngine(
@@ -73,18 +58,41 @@ def _play(job: Job) -> tuple[Job, dict[str, float], dict[str, float], str, tuple
     return job, dict(result.returns), net, result.end_reason, path
 
 
-@dataclass
-class AuditReport:
-    seeds: tuple[int, ...]
-    profiles: int
-    unilateral: dict[str, dict[str, list[float]]] = field(default_factory=dict)  # net
-    unilateral_total: dict[str, dict[str, list[float]]] = field(default_factory=dict)
-    dissolved: dict[str, Counter[str]] = field(default_factory=dict)  # unilateral runs
-    # power -> profile index -> doctrine -> returns net of end bonuses, over seeds
-    against: dict[str, dict[int, dict[str, list[float]]]] = field(default_factory=dict)
-    paths: Counter[tuple[str, ...]] = field(default_factory=Counter)
+class AuditReport(Record):
+    """An audit: each power's mean return by its doctrine, unilaterally and against each
+    co-player profile.
+    """
+
+    def __init__(
+        self,
+        seeds: tuple[int, ...],
+        profiles: int,
+        unilateral: dict[str, dict[str, list[float]]] | None = None,
+        unilateral_total: dict[str, dict[str, list[float]]] | None = None,
+        dissolved: dict[str, Counter[str]] | None = None,
+        against: dict[str, dict[int, dict[str, list[float]]]] | None = None,
+        paths: Counter[tuple[str, ...]] | None = None,
+    ) -> None:
+        self.seeds = seeds
+        self.profiles = profiles
+        self.unilateral: dict[str, dict[str, list[float]]] = (
+            {} if unilateral is None else unilateral
+        )  # net
+        self.unilateral_total: dict[str, dict[str, list[float]]] = (
+            {} if unilateral_total is None else unilateral_total
+        )
+        self.dissolved: dict[str, Counter[str]] = (
+            {} if dissolved is None else dissolved
+        )  # unilateral runs
+        # power -> profile index -> doctrine -> returns net of end bonuses, over seeds
+        self.against: dict[str, dict[int, dict[str, list[float]]]] = (
+            {} if against is None else against
+        )
+        self.paths: Counter[tuple[str, ...]] = Counter() if paths is None else paths
 
     def lines(self) -> list[str]:
+        """The report: each power's doctrines ranked by mean return, and which dominate."""
+
         out = [
             f"strategy audit: {len(DOCTRINES)} doctrines, seeds {list(self.seeds)}, "
             f"{self.profiles} random co-player profiles"
@@ -132,6 +140,8 @@ class AuditReport:
         return out
 
     def _dominance(self, power: str) -> str:
+        """The doctrines that are best for *power* against every profile, with their margins."""
+
         table = self.against.get(power, {})
         if not table:
             return ""
@@ -161,6 +171,8 @@ class AuditReport:
 
 
 def _profiles(count: int, rng: np.random.Generator) -> list[dict[str, str]]:
+    """*count* random doctrine profiles, one doctrine per power."""
+
     names = list(DOCTRINES)
     return [{p: names[int(rng.integers(len(names)))] for p in POWERS} for _ in range(count)]
 
@@ -174,6 +186,8 @@ def audit_strategy(
     temperature: float = 0.1,
     profile_seed: int = 0,
 ) -> AuditReport:
+    """Play the audit's campaigns on *workers* processes and collect the report."""
+
     del catalog  # each worker loads its own
     seed_list = tuple(seeds)
     rng = np.random.default_rng(profile_seed)
@@ -218,4 +232,6 @@ def audit_strategy(
 
 
 def job_count(seeds: Sequence[int], profiles: int) -> int:
+    """The number of campaigns an audit plays."""
+
     return len(POWERS) * len(DOCTRINES) * len(seeds) * (1 + profiles)

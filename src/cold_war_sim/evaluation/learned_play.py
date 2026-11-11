@@ -1,62 +1,34 @@
 """Learned play scored on an event's game tree (instant tree-family events).
 
-For a scenario entry of a crisis, intervention or alignment event, the event's game is
-expanded into its tree (alignment: the solver tree, with trailing chance clients folded,
-whose information sets are the full game's). Four joint policies are compared:
-
-* **learned:** the network at every information set of an agent role, with the
-  observation the engine would give there (:meth:`CampaignEngine.observe_subgame`);
-  computer-run roles play reference play;
-* **reference:** the engine's reference play (logit QRE at the baseline temperature; a
-  crisis with leaders' own beliefs plays each role's part of its own view);
-* **qre:** the true game's logit agent QRE at the learner's temperature (E46), the target
-  of the ``qre`` objective; its **distance** to another profile is the mean total
-  variation over agent information sets, weighted by the QRE's own reach (it has full
-  support, so every set counts);
-* **exact:** backward induction with perfect information; otherwise CFR+'s average
-  strategy, a Nash equilibrium only in two-player zero-sum games (in general-sum games it
-  approaches a coarse correlated equilibrium).
-
-**Exploitability** is the sum over agent roles of the gain from switching to a best
-response while every other role keeps its policy, in goal units (the game's payoffs
-divided by kappa, as the scenario's rewards). Agents play the true game, so their best
-responses use nature's probabilities, not a leader's mistaken belief: reference play
-built on such beliefs is exploitable by design (E41: Suez's NashConv 0.27 in kappa units).
-**Credibility** (sequential regret): exploitability only checks deviations along the
-path actually played, so an equilibrium can rest on threats that would not be carried out
-(E45: Britain pressing on at Suez under US financial pressure, which Washington never
-tests). For each agent role, the largest regret at any of its information sets,
-conditional on reaching it: each action's value against the policy's own mixture there,
-with the policy's play afterwards (the one-shot deviation principle), and beliefs over
-the set's nodes formed by chance and the other roles' policies mixed with ``TREMBLE`` of
-uniform play, so every information set is reached. Zero for a sequentially rational
-profile; in goal units.
-**Path regret:** the worst regret can sit at sets almost never reached (E50: Cuba's launch
-decision after B-59 fires, at QRE reach about 1e-29), so each role's regrets are also
-summed over its information sets weighted by the true-game QRE's reach: the regret it
-meets per episode along the QRE's paths, in goal units.
-**Aliasing** counts, per agent role, information sets against distinct observations: two
-information sets with one observation force one policy on both. **Consistency** is the
-converse (E52): every history in an information set must give the same observation, or
-the learner reads what the role may not know and the score of one history per set misses
-it; ``inconsistent`` counts the sets that break it (0 expected).
-The QRE benchmark reports its fixed-point **residual**, the largest gap between its play
-and the logit response to it; a residual above ``QRE_TOLERANCE`` is flagged.
+The event's game is expanded into its tree at a scenario entry, and four joint policies
+are compared: the learned networks, the engine's reference play, the true game's logit
+QRE at the learner's temperature (the ``qre`` objective's target), and an exact
+equilibrium (backward induction, or CFR+'s average). Scores are in goal units: the
+game's payoffs divided by kappa, as the scenario's rewards.
 """
 
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 import numpy as np
 
-from ...families import build_family
-from ...games import CHANCE, TERMINAL, GameState, build_tree
-from ...games import outcome_distribution as tree_outcomes
-from ...games.algorithms import backward_induction, best_response, cfr_plus, logit_qre
-from ...games.traverse import (
+from ..campaign.catalog.core import Catalog
+from ..campaign.decisions.requests import MAX_OPTIONS
+from ..campaign.engine.core import (
+    QRE_TOLERANCE,
+    CampaignEngine,
+    EngineConfig,
+    reference_tree_policy,
+)
+from ..campaign.environments.scenario import Entry, check_entries
+from ..campaign.world.state import POWERS, identity
+from ..families import build_family
+from ..games import CHANCE, TERMINAL, GameState, build_tree
+from ..games import outcome_distribution as tree_outcomes
+from ..games.solvers import backward_induction, best_response, cfr_plus, logit_qre
+from ..games.tree import (
     CHANCE_NODE,
     TERMINAL_NODE,
     GameTree,
@@ -65,34 +37,56 @@ from ...games.traverse import (
     node_values,
     reach_probabilities,
 )
-from ..catalog import Catalog
-from ..decisions import MAX_OPTIONS
-from ..engine import CampaignEngine, EngineConfig, reference_tree_policy
-from ..scenario import Entry, check_entries
-from ..state import POWERS, identity
+from ..records import Record
+from .goalcheck import TREE_FAMILIES
 
-TREE_FAMILIES = ("crisis", "intervention", "alignment")
 TREMBLE = 0.01  # others' uniform tremble that defines beliefs off the played path
-QRE_TOLERANCE = 1e-3  # a QRE benchmark with a larger fixed-point residual is flagged
 
 
 class OptionPolicy(Protocol):
     """Option probabilities for an identity at an observation (masked)."""
 
-    def probabilities(self, ident: str, obs: np.ndarray, mask: np.ndarray) -> np.ndarray: ...
+    def probabilities(self, ident: str, obs: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """Option probabilities for one observation of *ident*."""
+        ...
 
 
-@dataclass
-class PolicyScore:
-    gains: dict[str, float]  # agent role -> gain from a best response (goal units)
-    outcomes: dict[str, float]
-    historical: float  # probability of the event's historical outcome
-    regrets: dict[str, float] = field(default_factory=dict)  # role -> worst sequential regret
-    qre_distance: float | None = None  # reach-weighted total variation from the true-game QRE
-    path_regrets: dict[str, float] = field(default_factory=dict)  # role -> QRE-reach-weighted
+class PolicyScore(Record):
+    """One joint policy scored on the tree.
+
+    **Exploitability** is the sum over agent roles of the gain from a best response while
+    every other role keeps its policy; agents play the true game, so best responses use
+    nature's probabilities, not a leader's mistaken belief. **Worst regret** (credibility) is
+    each role's largest regret at any information set, conditional on reaching it, with
+    beliefs formed under ``TREMBLE`` of uniform play, so every set is reached (the one-shot
+    deviation principle). **Path regret** weights each role's regrets by the true-game QRE's
+    reach: the regret it meets per episode on the QRE's paths.
+    """
+
+    def __init__(
+        self,
+        gains: dict[str, float],
+        outcomes: dict[str, float],
+        historical: float,
+        regrets: dict[str, float] | None = None,
+        qre_distance: float | None = None,
+        path_regrets: dict[str, float] | None = None,
+    ) -> None:
+        self.gains = gains  # agent role -> gain from a best response (goal units)
+        self.outcomes = outcomes
+        self.historical = historical  # probability of the event's historical outcome
+        self.regrets: dict[str, float] = (
+            {} if regrets is None else regrets
+        )  # role -> worst sequential regret
+        self.qre_distance = qre_distance  # reach-weighted total variation from the true-game QRE
+        self.path_regrets: dict[str, float] = (
+            {} if path_regrets is None else path_regrets
+        )  # role -> QRE-reach-weighted
 
     @property
     def exploitability(self) -> float:
+        """The sum of the agent roles' best-response gains."""
+
         return sum(self.gains.values())
 
     @property
@@ -108,19 +102,45 @@ class PolicyScore:
         return sum(self.path_regrets.values())
 
 
-@dataclass
-class TreeReport:
-    event_id: str
-    entry: str
-    nodes: int
-    agent_roles: tuple[str, ...]
-    historical_label: str | None
-    scores: dict[str, PolicyScore]  # "learned", "reference", "qre", "exact"
-    aliasing: dict[str, tuple[int, int]] = field(default_factory=dict)  # role -> (sets, obs)
-    inconsistent: dict[str, int] = field(default_factory=dict)  # role -> sets seen two ways
-    qre_residual: float = 0.0  # the QRE benchmark's fixed-point residual
+class TreeReport(Record):
+    """The scores of an entry's four joint policies.
+
+    **Distance** to the QRE is the mean total variation over agent information sets,
+    weighted by the QRE's own reach. **Aliasing** counts information sets against distinct
+    observations; **consistency** requires every history in a set to give one
+    observation, and ``inconsistent`` counts the sets that break it. The QRE's fixed-point
+    **residual** is flagged above ``QRE_TOLERANCE``.
+    """
+
+    def __init__(
+        self,
+        event_id: str,
+        entry: str,
+        nodes: int,
+        agent_roles: tuple[str, ...],
+        historical_label: str | None,
+        scores: dict[str, PolicyScore],
+        aliasing: dict[str, tuple[int, int]] | None = None,
+        inconsistent: dict[str, int] | None = None,
+        qre_residual: float = 0.0,
+    ) -> None:
+        self.event_id = event_id
+        self.entry = entry
+        self.nodes = nodes
+        self.agent_roles = agent_roles
+        self.historical_label = historical_label
+        self.scores = scores  # "learned", "reference", "qre", "exact"
+        self.aliasing: dict[str, tuple[int, int]] = (
+            {} if aliasing is None else aliasing
+        )  # role -> (sets, obs)
+        self.inconsistent: dict[str, int] = (
+            {} if inconsistent is None else inconsistent
+        )  # role -> sets seen two ways
+        self.qre_residual = qre_residual  # the QRE benchmark's fixed-point residual
 
     def text(self) -> list[str]:
+        """The report, one block per policy."""
+
         out = [
             f"{self.event_id} from {self.entry}: {self.nodes} nodes; agent roles "
             f"{', '.join(self.agent_roles)}; historical outcome {self.historical_label}",
@@ -153,6 +173,8 @@ class TreeReport:
 
 
 def tree_root(game: Any) -> GameState:
+    """The root the tree is built from (alignment: its solver state)."""
+
     root: GameState = (
         game.solver_state() if hasattr(game, "solver_state") else game.new_initial_state()
     )
@@ -226,7 +248,7 @@ def tree_report(
         raise ValueError(f"{event_id} is a {major.family} event; tree scores need {TREE_FAMILIES}")
     config = EngineConfig(npc_policy="equilibrium", playable_tier=1, scope=event_id)
     if temperature is not None:
-        config = replace(config, baseline_temperature=temperature)
+        config = config.replace(baseline_temperature=temperature)
     engine = CampaignEngine(catalog, config)
     engine.restore(entry.state)
     active = engine.s.active[event_id]
@@ -298,6 +320,8 @@ def _score(
     label: str | None,
     qre_reach: Sequence[float],
 ) -> PolicyScore:
+    """Score *joint*: gains, outcome shares, the historical outcome's probability and regrets."""
+
     on_policy = expected_returns(tree, joint)
     gains = {
         role: max(0.0, best_response(tree, joint, role).value - on_policy[role]) / kappa

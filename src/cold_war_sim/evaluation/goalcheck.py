@@ -6,7 +6,7 @@
   distribution of a bound config: exact for tree families, by simulated
   rollouts for bargaining (dynamic programming policy) and attrition
   (heuristic policy).
-* :func:`variations` lists the sensitivity-sweep settings of GOALS.md §11.
+* :func:`variations` lists the settings used to test sensitivity to goal weights.
 """
 
 from __future__ import annotations
@@ -14,20 +14,24 @@ from __future__ import annotations
 import copy
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import replace
 from typing import Any
 
 import numpy as np
 
+from ..campaign.catalog.core import Catalog, EventSpec
+from ..campaign.decisions.policies import make_policy
+from ..campaign.engine.core import (
+    CampaignEngine,
+    EngineConfig,
+    baseline_policy,
+    reference_tree_policy,
+)
+from ..campaign.payoffs import goals
+from ..campaign.payoffs.goals import GoalConfig
+from ..campaign.world.state import WorldState, identity
 from ..families import build_family
 from ..games import CHANCE, build_tree, sample_action
 from ..games import outcome_distribution as tree_distribution
-from . import goals
-from .catalog import Catalog, EventSpec
-from .engine import CampaignEngine, EngineConfig, baseline_policy, reference_tree_policy
-from .goals import GoalConfig
-from .policies import make_policy
-from .state import WorldState, identity
 
 TREE_FAMILIES = ("crisis", "intervention", "alignment")
 DEFAULT_TEMPERATURE = EngineConfig().baseline_temperature
@@ -64,6 +68,10 @@ def outcome_distribution(
     seed: int = 0,
     temperature: float = DEFAULT_TEMPERATURE,
 ) -> dict[str, float]:
+    """Reference play's outcome distribution of a bound config: exact on the tree for tree
+    families, by *rollouts* simulated games for bargaining and attrition.
+    """
+
     game = build_family(family, config)
     if family in TREE_FAMILIES:
         root = game.solver_state() if hasattr(game, "solver_state") else game.new_initial_state()
@@ -86,6 +94,8 @@ def outcome_distribution(
 
 
 def total_variation(a: Mapping[str, float], b: Mapping[str, float]) -> float:
+    """The total-variation distance between two distributions: half the L1 distance."""
+
     return 0.5 * sum(abs(a.get(k, 0.0) - b.get(k, 0.0)) for k in set(a) | set(b))
 
 
@@ -113,28 +123,28 @@ def variations(
                 scaled[component] = weight * factor
                 total = sum(scaled.values())
                 changed = list(rows)
-                changed[index] = replace(current, weights={k: v / total for k, v in scaled.items()})
-                config = replace(base, rows={**base.rows, ident: tuple(changed)})
+                changed[index] = current.replace(weights={k: v / total for k, v in scaled.items()})
+                config = base.replace(rows={**base.rows, ident: tuple(changed)})
                 result.append((f"{ident} {component} x{factor}", config))
         for factor in (0.5, 1.5):
             rivalry = {**base.rivalry, ident: base.rivalry[ident] * factor}
-            result.append((f"{ident} rivalry x{factor}", replace(base, rivalry=rivalry)))
+            result.append((f"{ident} rivalry x{factor}", base.replace(rivalry=rivalry)))
     for multiplier in (1.5, 3.0):
         interest = {
             i: {r: (multiplier if m == 2.0 else m) for r, m in regions.items()}
             for i, regions in base.interest.items()
         }
-        result.append((f"core multiplier {multiplier}", replace(base, interest=interest)))
+        result.append((f"core multiplier {multiplier}", base.replace(interest=interest)))
     if base.allies is not None:
         for factor in (0.5, 1.5):
-            allies = replace(base.allies, height=base.allies.height * factor)
-            result.append((f"allies height x{factor}", replace(base, allies=allies)))
+            allies = base.allies.replace(height=base.allies.height * factor)
+            result.append((f"allies height x{factor}", base.replace(allies=allies)))
     if base.buffer_weight:
         for factor in (0.5, 1.5):
             weight = base.buffer_weight * factor
-            result.append((f"buffer weight x{factor}", replace(base, buffer_weight=weight)))
+            result.append((f"buffer weight x{factor}", base.replace(buffer_weight=weight)))
     for factor in (0.5, 2.0):
-        result.append((f"kappa x{factor}", replace(base, kappa=base.kappa * factor)))
+        result.append((f"kappa x{factor}", base.replace(kappa=base.kappa * factor)))
     return result
 
 
