@@ -79,3 +79,20 @@ def test_intel_about_one_role_has_one_audience() -> None:
     script.insert(2, {"stage": "intel", "about": "B", "observers": ["B"], "accuracy": 0.6})
     with pytest.raises(Exception, match="two different audiences"):
         build_family("crisis", config)
+
+
+def test_a_second_report_about_a_role_keeps_the_first() -> None:
+    # Two reports about B (resolve, then readiness), both seen by A. The observation has
+    # one report slot: it shows the first report A may see, as it does for reports about
+    # different roles; the later one sits beside it in the state, not in its place.
+    config = configs.signaling_crisis()
+    intel = {"stage": "intel", "about": "B", "observers": ["A"], "accuracy": 0.75}
+    config["script"][1:2] = [intel, {**intel, "dimension": "readiness"}]
+    state = build_family("crisis", config).new_initial_state()
+    reports = iter(("alarming", "reassuring"))
+    while state.current_player() == CHANCE:
+        actions = [a for a, p in state.chance_outcomes() if p > 0.0]
+        state.apply_action(next(reports) if "alarming" in actions else actions[0])
+    assert state.current_player() == "A"
+    assert state.reports == {("B", "resolve"): "alarming", ("B", "readiness"): "reassuring"}
+    assert state.observation("A")[8] == 1.0  # the first report: alarming

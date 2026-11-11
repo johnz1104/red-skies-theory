@@ -13,7 +13,7 @@ from . import configs
 
 
 def test_a_section_reads_keys_with_defaults_under_their_dotted_names() -> None:
-    data = {"cost": 2, "side": "a", "share": 0.25, "rounds": 3, "on": 1, "items": (1, 2)}
+    data = {"cost": 2, "side": "a", "share": 0.25, "rounds": 3, "on": True, "items": (1, 2)}
     with Section("game.roles.X", data) as s:
         assert s.name == "game.roles.X" and s.at("cost") == "game.roles.X.cost"
         assert s.nonnegative("cost") == 2.0
@@ -127,3 +127,10 @@ def test_playing_a_game_never_changes_its_parameters(family: str, config: dict[s
         state.returns()
         state.outcome()
     assert _snapshot(game.params) == before
+
+
+@pytest.mark.parametrize("value", ["no", "false", 0, 1, 0.0, None])
+def test_a_flag_is_only_true_or_false(value: Any) -> None:
+    section = Section("game", {"on": value})
+    with pytest.raises(ConfigError, match=r"game\.on must be true or false"), section as s:
+        s.flag("on")

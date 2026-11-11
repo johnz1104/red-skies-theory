@@ -265,7 +265,7 @@ class Intel(RecordedDraw):
         return (("alarming", p_alarm), ("reassuring", 1.0 - p_alarm))
 
     def apply(self, state: CrisisState, action: str) -> None:
-        state.reports[self.actor] = action
+        state.reports[(self.actor, self.trait)] = action
         visible = PUBLIC if self.observers is None else self.observers
         state.log(f"intel:{self.actor}={action}", visible_to=visible)
         state.tags.append(f"intel:{self.actor}={action}")

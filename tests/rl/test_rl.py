@@ -391,3 +391,27 @@ def test_a_best_response_reports_its_gain(tmp_path: Path) -> None:
         progress=lambda message: None,
     )
     assert result["episodes"] == 16 and np.isfinite(result["gain"])
+
+
+def test_rl_eval_plays_every_event_from_the_entries_it_is_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The checkpoint names an entries file that no longer exists; --entries names a fresh
+    # one. Multi-quarter events (here the civil war) must be played from the fresh file.
+    from cold_war_sim.campaign import load_catalog
+    from cold_war_sim.cli.main import main
+
+    catalog = load_catalog()
+    fresh = tmp_path / "fresh.pkl"
+    save_entries(fresh, capture_entries(catalog, ["chinese_civil_war"]))
+    env = ppo.make_env(ppo.PPOConfig(entries=str(fresh)), catalog)
+    stale = ppo.PPOConfig(entries=str(tmp_path / "stale.pkl"), seed=3)
+    ppo.Learner.create(stale, env.observation_size).save(tmp_path / "checkpoint.pt")
+    status = main(
+        [
+            "rl", "eval", "--checkpoint", str(tmp_path / "checkpoint.pt"),
+            "--entries", str(fresh), "--episodes", "1",
+        ]
+    )  # fmt: skip
+    assert status == 0
+    assert "chinese_civil_war learned" in capsys.readouterr().out

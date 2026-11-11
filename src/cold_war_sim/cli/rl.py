@@ -207,7 +207,8 @@ def cmd_rl_eval(args: argparse.Namespace) -> int:
     learner = ppo.Learner.load(Path(args.checkpoint))
     policy = learner.policy()
     catalog = load_catalog()
-    entries = scenario.load_entries(Path(args.entries or learner.config.entries))
+    entries_path = Path(args.entries or learner.config.entries)
+    entries = scenario.load_entries(entries_path)
     events = _rl_events(catalog, args.events) if args.events else sorted(entries)
     entries = {e: entries[e] for e in events if e in entries}
     scored = (
@@ -223,7 +224,11 @@ def cmd_rl_eval(args: argparse.Namespace) -> int:
     trees = {e.event_id for e in rl_evaluate.tree_entries(catalog, entries)}
     others = {e: v for e, v in entries.items() if e not in trees}
     if others:
-        learned_env = ppo.make_env(learner.config.replace(events=tuple(sorted(others))), catalog)
+        # play from the file given, not the one the checkpoint was trained on
+        learned_env = ppo.make_env(
+            learner.config.replace(entries=str(entries_path), events=tuple(sorted(others))),
+            catalog,
+        )
         reference_env = scenario.ScenarioEnv(
             others, catalog, EngineConfig(npc_policy="equilibrium", playable_tier=1, agents=())
         )

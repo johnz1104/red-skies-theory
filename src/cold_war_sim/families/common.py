@@ -193,9 +193,12 @@ class Section:
         return positive_int(self.at(key), self.get(key, default))
 
     def flag(self, key: str, default: bool = False) -> bool:
-        """A switch, by the value's truth."""
+        """A switch: ``true`` or ``false``, never another value read by its truth."""
 
-        return bool(self.get(key, default))
+        value = self.get(key, default)
+        if not isinstance(value, bool):
+            raise ConfigError(f"{self.at(key)} must be true or false, got {value!r}")
+        return value
 
     def choice(self, key: str, allowed: tuple[str, ...], default: Any = _REQUIRED) -> str:
         """One of *allowed*."""

@@ -135,7 +135,9 @@ class CrisisState(LoggedState):
         self.tags: list[str] = []
         # private information
         self.types: dict[str, dict[str, str]] = {role.id: {} for role in params.roles}
-        self.reports: dict[str, str] = {}  # the role a report is about -> the report
+        # (the role a report is about, its trait) -> the report; a second report about a
+        # role is kept beside the first, never in its place
+        self.reports: dict[tuple[str, str], str] = {}
         self.temperament: dict[str, str] = {}  # officer -> its temperament
         # the ladder and the bargaining
         self.rung = 0
@@ -274,8 +276,8 @@ class CrisisState(LoggedState):
     def observation(self, role: str) -> tuple[float, ...]:
         """Twelve features of *role*'s information: the rung, its resolve and readiness, its
         stance, whether an opponent stands hard, a deal offered to it, a deal it offered,
-        pressure on its side, a signal it observed, progress through the script, added risk,
-        and whether it is on side ``a``.
+        pressure on its side, the first signal it observed, progress through the script,
+        added risk, and whether it is on side ``a``.
         """
 
         side = self.side_of(role)
@@ -284,10 +286,10 @@ class CrisisState(LoggedState):
             stance == "hard" and self.side_of(other) not in (side, "neutral")
             for other, stance in self.stance.items()
         )
-        report = next(  # only a report this role may see (never another's intel)
+        report = next(  # the first report this role may see (never another's intel)
             (
                 report
-                for about, report in self.reports.items()
+                for (about, _), report in self.reports.items()
                 if self.params.report_shown_to(about, role)
             ),
             None,

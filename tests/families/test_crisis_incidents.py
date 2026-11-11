@@ -183,3 +183,12 @@ def test_incident_validation(mutate: Callable[[dict[str, Any]], object]) -> None
     mutate(config)
     with pytest.raises(ConfigError):
         crisis.build(config)
+
+
+def test_a_quoted_no_does_not_switch_an_incident_gate_on() -> None:
+    # read by its truth, the string "no" would turn the readiness gate on
+    config = incident_crisis(hold_cost=20.0)
+    config["script"].insert(0, {"stage": "types", "roles": {"B": {"p_high_readiness": 0.25}}})
+    config["script"][-1]["needs_readiness"] = "no"
+    with pytest.raises(ConfigError, match="needs_readiness must be true or false"):
+        crisis.build(config)
