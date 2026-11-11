@@ -1,107 +1,61 @@
-"""Derived payoffs: power roles value outcomes by their goal scores (``docs/GOALS.md`` §7).
-
-For an event starting in world ``W``, a power role's value for an outcome is::
-
-    kappa * w . [c(W') - c(W)]  +  kappa * terminal terms
-
-``c`` are the role's goal components, ``w`` its current weights, and ``W'`` a
-copy of ``W`` with the outcome's effects applied plus its deterministic
-consequences: cutscenes and leadership events the outcome newly enables that
-fire for certain (hazard 1), cascading as the director does.
-
-**Follow-ons** (delayed payoffs): every later cutscene adds
-``(P(W') - P(W)) * kappa * w . [c(W' + its effects) - c(W')]``, where ``P`` is its
-discounted chance of firing within the lookahead (``goals.yaml``), given its
-window, hazard and whether its condition holds. An outcome that makes an event
-more likely gains its value; one that blocks it loses it. The count is linear
-(no interactions), conditions are read on the world just after the outcome, and
-later major events are not counted (their outcomes are open). Terminal terms are
-the nuclear-war penalty, the loss of the role's seat (elimination or a regime
-change such as the Communists losing China: the goal score drops to zero, at
-least ``loss_floor``) and end-of-campaign bonuses. Values are rounded to two
-decimals so baseline caching stays useful.
-
-**Action costs** (crisis): an option whose own tag (``<actor>:move=<id>``,
-``:signal=``, ``:partner=``) has effects costs each power role minus the goal value of
-those effects, whatever the outcome (the consequences of taking that action).
-
-Only power roles are derived, and computer-run roles mapped to an identity (below);
-other NPC roles keep hand-set values, as do costs of actions (escalation, signals,
-effort, offers). Each family stores values in a
-different place (:func:`slots`); bargaining uses the explicit ``agreement``,
-``vetoed_value`` and consent values of the bargaining family, and attrition wars
-with offers a ``settlement`` value by share, the line through the grid's end offers.
-
-**Attrition sponsors' shares:** an outcome's ``side_share:<role>`` metric (a sponsor's share
-of its side's effort, by which the shared effects contract splits influence) is valued at
-equal shares within each side, the neutral expectation before the war is fought.
-
-**Effort costs** (attrition events with ``effort_costs: derived``): a quarter of full
-effort costs ``kappa * [w_economy * E + w_regime * S * persistence]``. ``E`` is the
-permanent fall in the economy component from the dynamics' war drag (the war's
-expenses), and ``S`` the stability lost in that quarter (casualties and the growth
-slowdown). Stability recovers after the war, so its loss counts by its discounted
-duration, ``persistence = (1 - d) / (1 - d + d * r)``, with ``d`` the lookahead
-discount and ``r`` the quarterly reversion rate. The effort levels (1/3, 2/3, 1)
-become the cost triple and this value each power sponsor's ``cost_scale``. Fighting with
-its own troops (``direct``) costs a power more: the domestic cost of casualties,
-``kappa * w_regime * r * casualty_drain * casualty_sensitivity * persistence``
-(:func:`casualty_cost`), is added to its ``direct_cost``.
-
-**Risk attitudes** (``goals.yaml`` ``risk``, E48): a power role in a crisis or an
-intervention gets its leader's prospect-theory attitude (``risk``), which the family
-applies to the role's total payoff, a gain or loss from the status quo.
-
-**Identity roles** (attrition, ``model.identities``): a computer-run role that fights
-for an identity not yet holding its seat (the Nationalists in China's civil war) values
-outcomes by the share of the country it would govern. ``S`` is the identity's goal
-score in the world after its side's victory (which must hand it the seat), with
-consequences and follow-ons; it starts with share ``s0`` (side B: ``1 -
-initial_control``). An outcome leaving it share ``s`` is worth ``kappa * S * (s - s0)``:
-1 for its victory, its own share for a settlement, the stated ``stalemate_share`` for
-a stalemate. Its defeat costs ``kappa * max(S * s0, loss_floor)``, the seat-loss rule.
-
-**Decision events** (:func:`decision_values`) value each option the same way and
-also count **major follow-ons**, one level deep: every later major event whose
-chance the option changes adds ``(P(after) - P(before)) * E[value]``, where the
-expectation is over that event's reference play (rollouts at the reference
-temperature) at the world where it is likelier, with its own derived payoffs.
-"""
+"""Turn campaign goals and possible event outcomes into game payoffs."""
 
 from __future__ import annotations
 
 import copy
 import math
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
-from ..families import alignment, attrition, bargaining, crisis, intervention
+from ...families import alignment, attrition, bargaining, crisis, intervention
+from ...records import Record
+from ..catalog.effects import EffectContext, EffectList
+from ..events.director import MAX_PASSES
+from ..world.state import POWERS, WorldState, identity, seat
 from . import goals
-from .effects import EffectContext, EffectList
 from .goals import GoalConfig
-from .state import POWERS, WorldState, identity, seat
 
 if TYPE_CHECKING:
-    from .catalog import Catalog, EventSpec
+    from ..catalog.core import Catalog, EventSpec
+
 
 DECIMALS = 2
-MAX_PASSES = 4  # as the director
 
 
-@dataclass
-class Valuer:
-    """Values effect sets for power roles at one world state."""
+class Valuer(Record):
+    """Value event outcomes for power roles at the current world state.
 
-    catalog: Catalog
-    event: EventSpec
-    world: WorldState
-    config: GoalConfig
-    _cache: dict[Any, WorldState] = field(default_factory=dict)
-    _applied: dict[tuple[int, str], WorldState] = field(default_factory=dict)
+    For a role with goal weights w and components c, the value is
+    ``kappa * w · [c(W_after) - c(W_before)]``, plus terminal penalties
+    and the value of later events caused by this outcome. The weights are
+    held fixed at the event's start; certain world consequences are applied
+    before scoring W_after.
+
+    Terminal penalties cover nuclear war and losing the role's seat through
+    elimination or regime change. The seat loss is at least ``loss_floor``.
+    Values are rounded to two decimals so repeated games can reuse solutions.
+    """
+
+    def __init__(
+        self,
+        catalog: Catalog,
+        event: EventSpec,
+        world: WorldState,
+        config: GoalConfig,
+        _cache: dict[Any, WorldState] | None = None,
+        _applied: dict[tuple[int, str], WorldState] | None = None,
+    ) -> None:
+        self.catalog = catalog
+        self.event = event
+        self.world = world
+        self.config = config
+        self._cache: dict[Any, WorldState] = {} if _cache is None else _cache
+        self._applied: dict[tuple[int, str], WorldState] = {} if _applied is None else _applied
 
     @property
     def kappa(self) -> float:
+        """The scale from goal units to payoff units."""
+
         return self.config.kappa
 
     def after(
@@ -113,6 +67,10 @@ class Valuer:
         tags: tuple[str, ...] = (),
         forced: Mapping[int, bool] | None = None,
     ) -> WorldState:
+        """The world after *effects*, and after their certain consequences: the cutscenes and
+        leadership events they newly enable that fire with hazard 1, cascading as the director does.
+        """
+
         effect_lists = tuple(effects)
         key = (
             tuple(id(e) for e in effect_lists),
@@ -140,6 +98,8 @@ class Valuer:
         return world
 
     def _consequences(self, world: WorldState) -> None:
+        """Fire the events that *world* now enables for certain, in director order, until none is left."""
+
         quarter = world.quarter + 1  # outcomes apply in RESOLVE; cutscenes fire next quarter
         applied: set[str] = set()
         for _ in range(MAX_PASSES):
@@ -165,6 +125,8 @@ class Valuer:
                 return
 
     def value(self, after: WorldState, power: str) -> float:
+        """kappa x w . [c(after) - c(before)] for *power*, plus the terminal terms."""
+
         before = self.world
         rewards = self.catalog.rewards
         ident = identity(before, power)
@@ -179,7 +141,7 @@ class Valuer:
         start = goals.components(before, ident, self.catalog, self.config)
         end = goals.components(after, ident, self.catalog, self.config)
         total = goals.reward(start, end, weights) + self.follow_on(after, ident, weights, end)
-        # end bonuses belong to the score reward only (E33); the nuclear-war penalty stays
+        # end bonuses belong to the score reward only; the nuclear-war penalty stays
         if after.nuclear_war and not before.nuclear_war:
             total -= float(rewards.get("nuclear_war_penalty", 20.0))
         return round(self.kappa * total, DECIMALS)
@@ -229,7 +191,13 @@ class Valuer:
     def follow_on(
         self, after: WorldState, ident: str, weights: Mapping[str, float], base: Mapping[str, float]
     ) -> float:
-        """Goal value of the later cutscenes the outcome makes more or less likely."""
+        """Goal value of the later cutscenes the outcome makes more or less likely.
+
+        Each adds ``(P(W') - P(W)) x kappa x w . [c(W' + its effects) - c(W')]``, with ``P`` its
+        discounted chance of firing within the lookahead given its window, hazard and
+        condition. The count is linear (no interactions), and later major events are not
+        counted: their outcomes are open.
+        """
 
         if self.config.lookahead_quarters <= 0:
             return 0.0
@@ -255,6 +223,10 @@ class Valuer:
     def label_value(
         self, label: str, power: str, metrics: Mapping[str, float] | None = None
     ) -> float:
+        """*power*'s value of the outcome *label*: its effects, consequences and follow-ons,
+        in expectation over any lotteries.
+        """
+
         major = self.event.major
         assert major is not None
         effects = major.outcomes[label].effects
@@ -270,6 +242,8 @@ class Valuer:
         return round(total, DECIMALS)
 
     def tag_value(self, tag: str, power: str) -> float | None:
+        """*power*'s value of the effects of *tag* alone, or ``None`` if the tag has none."""
+
         major = self.event.major
         assert major is not None
         spec = major.tags.get(tag)
@@ -297,6 +271,8 @@ def _branches(
 
 # ------------------------------------------------------------------ per family
 def _powers(ids: Iterable[str]) -> list[str]:
+    """The power roles among *roles*."""
+
     return [i for i in ids if i in POWERS]
 
 
@@ -311,6 +287,10 @@ def _risk(v: Valuer, power: str) -> dict[str, float] | None:
 
 
 def _crisis(v: Valuer, config: dict[str, Any]) -> None:
+    """Each power role's outcome values and risk attitude, its audience cost, and the costs
+    of the options that have effects of their own.
+    """
+
     powers = _powers(config["roles"])
     for power in powers:
         role = config["roles"][power]
@@ -336,7 +316,7 @@ def _action_tags(
     config: Mapping[str, Any], tags: Iterable[str]
 ) -> list[tuple[dict[str, Any], str]]:
     """Crisis options whose own tag ("<actor>:move=<id>", ":signal=", ":partner=") has
-    effects: their consequences, whoever the outcome, are the option's costs (E41)."""
+    effects: their consequences, whoever the outcome, are the option's costs."""
 
     tag_set = set(tags)
     result = []
@@ -352,9 +332,16 @@ def _action_tags(
 
 
 def effort_cost(v: Valuer, power: str) -> float:
-    """Derived cost to *power* of one quarter of full war effort (module docstring)."""
+    """Derived cost to *power* of one quarter of full war effort.
 
-    from .dynamics import DT, DynamicsParams
+    ``kappa x [w_economy x E + w_regime x S x persistence]``: ``E`` is the permanent fall in
+    the economy component from the dynamics' war drag, and ``S`` the stability lost in that
+    quarter. Stability recovers after the war, so its loss counts by its discounted
+    duration, ``persistence = (1 - d) / (1 - d + d r)``, with ``d`` the lookahead discount
+    and ``r`` the quarterly reversion rate.
+    """
+
+    from ..world.dynamics import DT, DynamicsParams
 
     params = DynamicsParams.from_catalog(v.catalog)
     ident = identity(v.world, power)
@@ -374,9 +361,11 @@ def effort_cost(v: Valuer, power: str) -> float:
 
 
 def casualty_cost(v: Valuer, power: str) -> float:
-    """Derived domestic cost to *power* of one quarter fought with its own troops."""
+    """Derived domestic cost to *power* of one quarter fought with its own troops:
+    ``kappa x w_regime x r x casualty_drain x casualty_sensitivity x persistence``.
+    """
 
-    from .dynamics import DT, DynamicsParams
+    from ..world.dynamics import DT, DynamicsParams
 
     params = DynamicsParams.from_catalog(v.catalog)
     ident = identity(v.world, power)
@@ -389,6 +378,15 @@ def casualty_cost(v: Valuer, power: str) -> float:
 
 
 def _attrition(v: Valuer, config: dict[str, Any]) -> None:
+    """Each power sponsor's values and costs.
+
+    A sponsor's ``side_share`` (its share of its side's effort, by which the contract
+    splits influence) is valued at equal shares within each side. With offers, a
+    settlement is valued by share along the line through the grid's end offers. With
+    ``effort_costs: derived`` the cost triple is the effort levels (1/3, 2/3, 1) and each
+    power's ``cost_scale`` is :func:`effort_cost`.
+    """
+
     major = v.event.major
     assert major is not None
     labels = attrition.OUTCOMES + ((attrition.REFUSED,) if config.get("approval") else ())
@@ -456,7 +454,7 @@ def _attrition(v: Valuer, config: dict[str, Any]) -> None:
         conceded = v.tag_value(f"{power}:conceded", power)
         if conceded is not None and power in config.get("commitments", {}):
             config["commitments"][power]["audience_cost"] = max(0.0, -conceded)
-        withdrew = v.tag_value(f"{power}:withdrew", power)  # abandoning an ally (E39)
+        withdrew = v.tag_value(f"{power}:withdrew", power)  # abandoning an ally
         if withdrew is not None:
             sponsor["withdraw_cost"] = max(0.0, -withdrew)
     for role, (ident, stalemate_share) in major.identities.items():
@@ -475,7 +473,14 @@ def _attrition(v: Valuer, config: dict[str, Any]) -> None:
 def _identity_role(
     v: Valuer, config: dict[str, Any], role: str, ident: str, stalemate_share: float, start: float
 ) -> None:
-    """Values for a computer-run *role* fighting for *ident* (module docstring)."""
+    """Values for a computer-run *role* fighting for the identity *ident*.
+
+    With ``S`` the identity's goal score after its side's victory (which must hand it the
+    seat) and ``s0`` its starting share of the country, an outcome leaving it share ``s`` is
+    worth ``kappa x S x (s - s0)``: 1 for its victory, its own share for a settlement, the
+    stated ``stalemate_share`` for a stalemate. Its defeat costs
+    ``kappa x max(S x s0, loss_floor)``, the seat-loss rule.
+    """
 
     major = v.event.major
     assert major is not None
@@ -516,6 +521,8 @@ def _identity_role(
 
 
 def _intervention(v: Valuer, config: dict[str, Any]) -> None:
+    """The patron's and the rival's outcome values and risk attitudes, where they are powers."""
+
     for key in ("patron", "rival"):
         role = config["roles"][key]
         if role in POWERS:
@@ -528,6 +535,10 @@ def _intervention(v: Valuer, config: dict[str, Any]) -> None:
 
 
 def _alignment(v: Valuer, config: dict[str, Any]) -> None:
+    """Each power patron's gain and loss per client and its offers' returns, and each power
+    client's affinity for each patron and value of staying non-aligned.
+    """
+
     major = v.event.major
     assert major is not None
     patrons = list(config["patrons"])
@@ -577,6 +588,10 @@ def _alignment(v: Valuer, config: dict[str, Any]) -> None:
 
 
 def _bargaining(v: Valuer, config: dict[str, Any]) -> None:
+    """Each power side's values of the endings, with an agreement valued by share along the
+    line through the grid's end offers; consent roles likewise.
+    """
+
     major = v.event.major
     assert major is not None
 
@@ -606,8 +621,8 @@ def _bargaining(v: Valuer, config: dict[str, Any]) -> None:
         low, high = at_share(0.0, power), at_share(1.0, power)
         item["base"] = low
         item["per_share"] = round(high - low, DECIMALS)
-        # a vetoed ending is worth the same to every ratifier; vetoing costs the vetoer
-        # alone what its own "<role>:vetoed" tag does, e.g. relations (E52)
+        # a vetoed ending is worth the same to every ratifier; vetoing costs the vetoer alone
+        # what its own "<role>:vetoed" tag does, e.g. relations
         item["veto_value"] = v.label_value("vetoed", power)
         veto_tag = major.tags.get(f"{power}:vetoed")
         if veto_tag is not None:
@@ -644,83 +659,133 @@ def apply(
     return config
 
 
+Slot = tuple[Any, ...]  # a config path prefix
+
+
+def _crisis_slots(config: Mapping[str, Any], tags: set[str], **_: Any) -> list[Slot]:
+    """Each power role's values and risk attitude, its audience cost if it has a
+    backing-down tag, and the costs of options that have their own tag."""
+
+    result: list[Slot] = []
+    for power in _powers(config["roles"]):
+        result.append(("roles", power, "values"))
+        result.append(("roles", power, "risk"))
+        if f"{power}:backed_down_after_commitment" in tags:
+            result.append(("roles", power, "audience_cost"))
+    for index, stage in enumerate(config.get("script", [])):
+        for position, option in enumerate(stage.get("options", [])):
+            if f"{stage.get('actor')}:{stage.get('stage')}={option.get('id')}" in tags:
+                result.append(("script", index, "options", position, "costs"))
+    return result
+
+
+def _attrition_slots(
+    config: Mapping[str, Any],
+    tags: set[str],
+    effort_costs: str = "hand",
+    identities: Iterable[str] = (),
+) -> list[Slot]:
+    """Each power sponsor's values, and by its tags and the war's blocks its cost scale,
+    settlement, audience costs, withdrawal cost and veto cost; identity roles' values."""
+
+    result: list[Slot] = []
+    for power in _powers(config["sponsors"]):
+        result.append(("sponsors", power, "values"))
+        if effort_costs == "derived":
+            result.append(("sponsors", power, "cost_scale"))
+        if "offers" in config:
+            result.append(("sponsors", power, "settlement"))
+        if f"{power}:bluffed" in tags and power in config.get("red_lines", {}):
+            result.append(("red_lines", power, "audience_cost"))
+        if f"{power}:conceded" in tags and power in config.get("commitments", {}):
+            result.append(("commitments", power, "audience_cost"))
+        if f"{power}:withdrew" in tags:
+            result.append(("sponsors", power, "withdraw_cost"))
+    for index, item in enumerate(config.get("offers", {}).get("consent", [])):
+        role = item if isinstance(item, str) else item.get("role")
+        if role in POWERS and f"{role}:vetoed" in tags:
+            result.append(("offers", "consent", index, "veto_cost"))
+    for role in identities:
+        result.append(("sponsors", role, "values"))
+        if "offers" in config:
+            result.append(("sponsors", role, "settlement"))
+    return result
+
+
+def _intervention_slots(config: Mapping[str, Any], tags: set[str], **_: Any) -> list[Slot]:
+    """The values and risk attitude of the patron and of the rival, where they are powers."""
+
+    result: list[Slot] = []
+    for key in ("patron", "rival"):
+        if config["roles"][key] in POWERS:
+            result.append(("values", key))
+            result.append(("risk", key))
+    return result
+
+
+def _alignment_slots(config: Mapping[str, Any], tags: set[str], **_: Any) -> list[Slot]:
+    """Each power patron's gains, losses, offer returns and forbid cost; each power
+    client's affinities and non-aligned value."""
+
+    result: list[Slot] = []
+    for patron in _powers(config["patrons"]):
+        result.extend([("patrons", patron, "gain"), ("patrons", patron, "loss")])
+        if f"{patron}:forbade" in tags and config["patrons"][patron].get("control"):
+            result.append(("patrons", patron, "forbid_cost"))
+        result.append(("patrons", patron, "offer_return"))
+    for client in _powers(config["clients"]):
+        result.extend([("clients", client, "affinity"), ("clients", client, "nonaligned")])
+    return result
+
+
+def _bargaining_slots(config: Mapping[str, Any], tags: set[str], **_: Any) -> list[Slot]:
+    """Each power side's agreement, breakdown, impasse and vetoed values and commitment
+    cost; each power consent role's values and veto cost."""
+
+    result: list[Slot] = []
+    for key in bargaining.SIDE_ROLES:
+        power = config["roles"][key]
+        if power in POWERS:
+            for name in ("agreement", "breakdown_value", "impasse_value", "vetoed_value"):
+                result.append(("sides", key, name))
+            if f"{power}:broke_commitment" in tags:
+                result.append(("sides", key, "commitment_cost"))
+    for index, item in enumerate(config.get("consent", [])):
+        if item["role"] in POWERS:
+            for name in ("base", "per_share", "veto_value", "breakdown_value", "impasse_value"):
+                result.append(("consent", index, name))
+            if f"{item['role']}:vetoed" in tags:
+                result.append(("consent", index, "veto_cost"))
+    return result
+
+
+SLOTS: dict[str, Callable[..., list[Slot]]] = {
+    "crisis": _crisis_slots,
+    "attrition": _attrition_slots,
+    "intervention": _intervention_slots,
+    "alignment": _alignment_slots,
+    "bargaining": _bargaining_slots,
+}
+
+
 def slots(
     family: str,
     config: Mapping[str, Any],
     tags: Iterable[str],
     effort_costs: str = "hand",
     identities: Iterable[str] = (),
-) -> list[tuple[Any, ...]]:
+) -> list[Slot]:
     """Config path prefixes that hold derived values (bindings may not target them)."""
 
-    tag_set = set(tags)
-    result: list[tuple[Any, ...]] = []
-    if family == "crisis":
-        for power in _powers(config["roles"]):
-            result.append(("roles", power, "values"))
-            result.append(("roles", power, "risk"))
-            if f"{power}:backed_down_after_commitment" in tag_set:
-                result.append(("roles", power, "audience_cost"))
-        for index, stage in enumerate(config.get("script", [])):
-            for position, option in enumerate(stage.get("options", [])):
-                if f"{stage.get('actor')}:{stage.get('stage')}={option.get('id')}" in tag_set:
-                    result.append(("script", index, "options", position, "costs"))
-    elif family == "attrition":
-        for power in _powers(config["sponsors"]):
-            result.append(("sponsors", power, "values"))
-            if effort_costs == "derived":
-                result.append(("sponsors", power, "cost_scale"))
-            if "offers" in config:
-                result.append(("sponsors", power, "settlement"))
-            if f"{power}:bluffed" in tag_set and power in config.get("red_lines", {}):
-                result.append(("red_lines", power, "audience_cost"))
-            if f"{power}:conceded" in tag_set and power in config.get("commitments", {}):
-                result.append(("commitments", power, "audience_cost"))
-            if f"{power}:withdrew" in tag_set:
-                result.append(("sponsors", power, "withdraw_cost"))
-        for index, item in enumerate(config.get("offers", {}).get("consent", [])):
-            role = item if isinstance(item, str) else item.get("role")
-            if role in POWERS and f"{role}:vetoed" in tag_set:
-                result.append(("offers", "consent", index, "veto_cost"))
-        for role in identities:
-            result.append(("sponsors", role, "values"))
-            if "offers" in config:
-                result.append(("sponsors", role, "settlement"))
-    elif family == "intervention":
-        for key in ("patron", "rival"):
-            if config["roles"][key] in POWERS:
-                result.append(("values", key))
-                result.append(("risk", key))
-    elif family == "alignment":
-        for patron in _powers(config["patrons"]):
-            result.extend([("patrons", patron, "gain"), ("patrons", patron, "loss")])
-            if f"{patron}:forbade" in tag_set and config["patrons"][patron].get("control"):
-                result.append(("patrons", patron, "forbid_cost"))
-            result.append(("patrons", patron, "offer_return"))
-        for client in _powers(config["clients"]):
-            result.extend([("clients", client, "affinity"), ("clients", client, "nonaligned")])
-    elif family == "bargaining":
-        for key in bargaining.SIDE_ROLES:
-            power = config["roles"][key]
-            if power in POWERS:
-                for name in ("agreement", "breakdown_value", "impasse_value", "vetoed_value"):
-                    result.append(("sides", key, name))
-                if f"{power}:broke_commitment" in tag_set:
-                    result.append(("sides", key, "commitment_cost"))
-        for index, item in enumerate(config.get("consent", [])):
-            if item["role"] in POWERS:
-                for name in ("base", "per_share", "veto_value", "breakdown_value", "impasse_value"):
-                    result.append(("consent", index, name))
-                if f"{item['role']}:vetoed" in tag_set:
-                    result.append(("consent", index, "veto_cost"))
-    return result
+    if family not in SLOTS:
+        return []
+    return SLOTS[family](config, set(tags), effort_costs=effort_costs, identities=identities)
 
 
-# --------------------------------------------------------------- decisions
 _EXPECTED: dict[str, float] = {}
 _EXPECTED_LIMIT = 2048
 FOLLOW_ON_ROLLOUTS = 200  # plain rollouts, for games that do not open with chance
-STRATIFIED_ROLLOUTS = 72  # budget for the opening cells that remain open, by their mass (E39)
+STRATIFIED_ROLLOUTS = 72  # budget for the opening cells that remain open, by their mass
 MIN_ROLLOUTS = 24
 MAX_CELLS = 32
 
@@ -730,7 +795,7 @@ def _opening_cells(game: Any, policy: Any) -> list[tuple[Any, float]]:
     policy's probabilities, while the cells number at most MAX_CELLS: (state,
     probability) pairs. Cells that end the game (a refusal) need no rollouts."""
 
-    from ..games import CHANCE
+    from ...games import CHANCE
 
     cells: list[tuple[Any, float]] = [(game.new_initial_state(), 1.0)]
     while any(not s.is_terminal() for s, _ in cells):
@@ -761,7 +826,7 @@ def _expected_value(
     """Expected value to *power* of major *event* starting at *world*, under reference
     play (rollouts of the engine's baseline), with the event's own derived payoffs.
 
-    The opening moves are expanded exactly (E39): cells that end the game count
+    The opening moves are expanded exactly: cells that end the game count
     exactly, and a rollout budget in proportion to the probability left open (at
     least MIN_ROLLOUTS) is shared among the others by probability, at least one
     each. This removes the variance between cells (for a war, between the private
@@ -769,15 +834,15 @@ def _expected_value(
 
     import numpy as np
 
-    from ..families import build_family
-    from ..games import CHANCE, sample_action
-    from .engine import EngineConfig, baseline_policy
-    from .serialization import canonical_json
+    from ...families import build_family
+    from ...games import CHANCE, sample_action
+    from ..engine.core import EngineConfig, baseline_policy
+    from ..engine.reproducibility import canonical_json
 
     major = event.major
     assert major is not None
     config = catalog.instantiate_config(event.id, world, goal_config)
-    # the catalog's fingerprint: follow-on effects may differ between variants (E42)
+    # the catalog's fingerprint: follow-on effects may differ between variants
     key = canonical_json(
         {"event": event.id, "config": config, "power": power, "catalog": catalog.fingerprint}
     )
@@ -827,8 +892,13 @@ def _expected_value(
 def decision_values(
     catalog: Catalog, event: EventSpec, world: WorldState, goal_config: GoalConfig | None = None
 ) -> dict[str, float]:
-    """Derived value of each option of decision *event* to its power at *world*:
-    goal change, cutscene follow-ons and major follow-ons (one level deep)."""
+    """Derived value of each option of decision *event* to its power at *world*.
+
+    The goal change, the cutscene follow-ons, and major follow-ons one level deep: every
+    later major event whose chance the option changes adds
+    ``(P(after) - P(before)) x E[value]``, the expectation over that event's reference play
+    at the world where it is likelier.
+    """
 
     spec = event.decision
     assert spec is not None
@@ -852,4 +922,20 @@ def decision_values(
     return result
 
 
-__all__ = ["DECIMALS", "Valuer", "apply", "decision_values", "slots"]
+__all__ = [
+    "DECIMALS",
+    "FAMILIES",
+    "FOLLOW_ON_ROLLOUTS",
+    "MAX_CELLS",
+    "MAX_PASSES",
+    "MIN_ROLLOUTS",
+    "SLOTS",
+    "STRATIFIED_ROLLOUTS",
+    "Valuer",
+    "_expected_value",
+    "apply",
+    "casualty_cost",
+    "decision_values",
+    "effort_cost",
+    "slots",
+]

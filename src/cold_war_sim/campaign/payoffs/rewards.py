@@ -1,26 +1,28 @@
-"""General-sum rewards from world state.
+"""The pre-goals world score (``EngineConfig(reward="score")``), kept for comparison.
 
-Each quarter a power receives the change in its *score*, a weighted sum of
-security, influence, economic share, prestige, stability and credibility
-(weights per power in ``powers.yaml``). Ending the campaign adds per-power
-end bonuses (for example the USSR's dissolution), and nuclear war imposes a
-large penalty on every power. Sub-game payoffs never enter the reward: they
-are cardinal only within one event.
+A power's score is a weighted sum of security, influence, economic share, prestige,
+stability and credibility (weights per power in ``powers.yaml``); the reward is its
+change each quarter.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .catalog import Catalog
-from .dynamics import military_strength
-from .state import POWERS, REGIONS, WorldState
+from ..catalog.core import Catalog
+from ..world.dynamics import military_strength
+from ..world.state import POWERS, REGIONS, WorldState
 
 COMPONENTS = ("security", "influence", "economy", "prestige", "stability", "credibility")
 DEFAULT_WEIGHTS = dict.fromkeys(COMPONENTS, 1.0)
 
 
 def components(world: WorldState, power: str) -> dict[str, float]:
+    """The score's components for *power*: its strength against the strongest active
+    rival, its importance-weighted influence, its share of the powers' economies, and its
+    prestige, stability and credibility.
+    """
+
     state = world.powers[power]
     own = military_strength(world, power)
     rivals = [
@@ -50,6 +52,8 @@ def components(world: WorldState, power: str) -> dict[str, float]:
 
 
 def score(world: WorldState, power: str, weights: Mapping[str, float]) -> float:
+    """*power*'s weighted score (0 once eliminated)."""
+
     if world.powers[power].status == "eliminated":
         return 0.0
     parts = components(world, power)
@@ -57,6 +61,8 @@ def score(world: WorldState, power: str, weights: Mapping[str, float]) -> float:
 
 
 def scores(world: WorldState, catalog: Catalog) -> dict[str, float]:
+    """Every power's score."""
+
     return {p: score(world, p, catalog.powers[p].score_weights or DEFAULT_WEIGHTS) for p in POWERS}
 
 
@@ -65,7 +71,7 @@ def terminal_bonus(
 ) -> dict[str, float]:
     """Terminal terms: the nuclear-war penalty, and the end bonuses of ``powers.yaml``
     when *end_bonuses* (the score reward only; under the goal reward the outcome's
-    effects carry its meaning, E33)."""
+    effects carry its meaning)."""
 
     bonus = dict.fromkeys(POWERS, 0.0)
     if world.ended is None:
