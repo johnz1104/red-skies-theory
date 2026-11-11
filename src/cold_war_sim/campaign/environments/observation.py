@@ -1,19 +1,14 @@
-"""Fixed-width observation vectors and readable observation dicts.
+"""What each agent can observe, as a vector or a readable dictionary.
 
-The vector layout is fixed by the catalog (its flag list) and published as
-``feature_names``. Each power sees its own state exactly and the other powers
-through the same public fields. A context block describes the pending
-decision: its kind, round, option count and the family's own observation of
-the sub-game (padded to ``FAMILY_FEATURES``), which encodes only what that
-role is allowed to know.
+Agents see their own power's state and the public fields of other powers.
+The current choice adds its kind, round, available options, and the game's
+summary of what that role knows. ``feature_names`` gives the vector layout.
 
-The family's observation is a summary, and several information sets can share it
-(E44: Moscow's own stakes at Suez, other roles' earlier moves). The last block therefore
-carries the role's information state itself: its most recent ``TOKEN_SLOTS`` log tokens,
-newest first, each as a hashed id in 1..``TOKEN_SPACE`` - 1 (0 = empty). The ids are
-categories, not magnitudes: a network embeds them (``rl.ppo``). On a strategy turn the
-block carries the power's own choices so far this turn instead (``strategy:<stage>=<id>``,
-newest first; E52), so a mode can follow the region just chosen.
+Different histories can share the same summary. The final block therefore
+keeps the role's latest ``TOKEN_SLOTS`` observations, newest first, as hashed
+IDs from 1 to ``TOKEN_SPACE - 1``; 0 marks an empty slot. These IDs are
+categories rather than amounts. On strategy turns, the block instead keeps
+the power's choices so far, as ``strategy:<stage>=<id>`` tokens.
 """
 
 from __future__ import annotations
@@ -23,14 +18,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from . import calendar
-from .decisions import DECISION_KINDS, MAX_OPTIONS
-from .rng import stable_key
-from .state import POSTURES, POWERS, REGIONS, STATUSES
-from .strategic import STAGES
+from ..decisions.requests import DECISION_KINDS, MAX_OPTIONS
+from ..decisions.strategic import STAGES
+from ..engine.reproducibility import stable_key
+from ..world import calendar
+from ..world.state import POSTURES, POWERS, REGIONS, STATUSES
 
 if TYPE_CHECKING:
-    from .engine import CampaignEngine
+    from ..engine.core import CampaignEngine
 
 FAMILY_FEATURES = 19
 TOKEN_SLOTS = 16  # the information state's most recent log tokens
@@ -60,6 +55,8 @@ SCALES = {
 
 
 def feature_names(flags: tuple[str, ...]) -> tuple[str, ...]:
+    """The name of every slot of the observation vector, in order, given the catalog's flags."""
+
     names = ["global.progress", "global.quarter", "global.tension", "global.arms_control"]
     names += [f"flag.{f}" for f in flags]
     names += [f"self.status.{s}" for s in STATUSES]
@@ -100,6 +97,10 @@ def token_id(token: str) -> int:
 
 
 def encode(engine: CampaignEngine, power: str) -> np.ndarray:
+    """The observation vector of *power*: the world, its own state, the other powers'
+    public fields, the regions, and the pending decision's context and token block.
+    """
+
     world = engine.world
     flags = engine.observed_flags
     values: list[float] = [

@@ -22,14 +22,118 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from . import calendar
-from .catalog import Catalog
-from .decisions import MAX_OPTIONS
-from .engine import CampaignEngine, EngineConfig
-from .state import IDENTITIES, POWERS, identity, seat
+from ..catalog.core import Catalog
+from ..decisions.requests import MAX_OPTIONS
+from ..engine.core import CampaignEngine, EngineConfig
+from ..world import calendar
+from ..world.state import IDENTITIES, POWERS, identity, seat
 
 
-class ColdWarEnv:
+class AgentCycle:
+    """An agent-environment cycle over a campaign engine (PettingZoo's AEC shape).
+
+    One agent is selected at a time: the identity whose decision the engine awaits, or an
+    agent whose game is over and that must be stepped once with ``None`` to leave.
+    """
+
+    engine: CampaignEngine
+    agents: list[str]
+    rewards: dict[str, float]
+    _cumulative_rewards: dict[str, float]
+    terminations: dict[str, bool]
+    truncations: dict[str, bool]
+    infos: dict[str, dict[str, Any]]
+    agent_selection: str
+
+    @property
+    def observation_size(self) -> int:
+        """The length of the observation vector."""
+
+        return len(self.engine.feature_names)
+
+    @property
+    def action_size(self) -> int:
+        """The largest number of options a request can have."""
+
+        return MAX_OPTIONS
+
+    def observe(self, agent: str) -> np.ndarray:
+        """The observation of *agent*."""
+
+        return self.engine.observe(agent)
+
+    def action_mask(self, agent: str) -> np.ndarray:
+        """The mask of the options open to *agent*."""
+
+        return self.engine.action_mask(agent)
+
+    def last(self) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """The selected agent's observation, cumulative reward, termination, truncation and info."""
+
+        agent = self.agent_selection
+        return (
+            self.observe(agent),
+            self._cumulative_rewards[agent],
+            self.terminations[agent],
+            self.truncations[agent],
+            self.infos[agent],
+        )
+
+    def step(self, action: int | None) -> None:
+        """Answer the selected agent's request with *action* (``None`` for an agent that is done)."""
+
+        agent = self.agent_selection
+        if self.terminations.get(agent) or self.truncations.get(agent):
+            if action is not None:
+                raise ValueError("terminated or truncated agents must be stepped with None")
+            self._remove(agent)
+            self.rewards = dict.fromkeys(self.agents, 0.0)  # a removal step earns nothing
+            self._select_next()
+            return
+        if action is None:
+            raise ValueError("a live agent needs an action")
+        request = self.engine.pending()
+        if request is None or self.engine.agent_of(request.power) != agent:
+            raise RuntimeError("environment is out of sync with the engine")
+        self._cumulative_rewards[agent] = 0.0
+        self.engine.act(int(action))
+        self._collect()
+
+    def _select_next(self) -> None:
+        """Select an agent that is done and not yet removed, else the one whose decision is pending."""
+
+        for agent in self.agents:
+            if self.terminations[agent] or self.truncations[agent]:
+                self.agent_selection = agent
+                return
+        request = self.engine.pending()
+        self.agent_selection = self.engine.agent_of(request.power) if request is not None else ""
+
+    def _remove(self, agent: str) -> None:
+        """Drop an agent that is done from the tables."""
+
+        self.agents.remove(agent)
+        for table in (
+            self.rewards,
+            self._cumulative_rewards,
+            self.terminations,
+            self.truncations,
+            self.infos,
+        ):
+            table.pop(agent, None)
+
+    def _collect(self) -> None:
+        """Pay the rewards that accrued since the last step and select the next agent."""
+
+        raise NotImplementedError
+
+
+class ColdWarEnv(AgentCycle):
+    """The campaign as an agent-environment-cycle environment (PettingZoo's AEC shape,
+    without depending on it). Agents are the identities holding a seat; the China seat's
+    identity may change during a campaign.
+    """
+
     metadata: ClassVar[dict[str, Any]] = {
         "name": "cold_war_campaign_v0",
         "is_parallelizable": False,
@@ -50,15 +154,9 @@ class ColdWarEnv:
         self.infos: dict[str, dict[str, Any]] = {}
         self.agent_selection: str = ""
 
-    @property
-    def observation_size(self) -> int:
-        return len(self.engine.feature_names)
-
-    @property
-    def action_size(self) -> int:
-        return MAX_OPTIONS
-
     def reset(self, seed: int = 0) -> None:
+        """Start a campaign from *seed* with the identities that hold a seat as agents."""
+
         self.engine.reset(seed)
         world = self.engine.world
         holders = {identity(world, p) for p in self.engine.config.agents}
@@ -75,42 +173,12 @@ class ColdWarEnv:
         self.infos = {a: {} for a in self.agents}
         self._collect()
 
-    def observe(self, agent: str) -> np.ndarray:
-        return self.engine.observe(agent)
-
-    def action_mask(self, agent: str) -> np.ndarray:
-        return self.engine.action_mask(agent)
-
-    def last(self) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        agent = self.agent_selection
-        return (
-            self.observe(agent),
-            self._cumulative_rewards[agent],
-            self.terminations[agent],
-            self.truncations[agent],
-            self.infos[agent],
-        )
-
-    def step(self, action: int | None) -> None:
-        agent = self.agent_selection
-        if self.terminations.get(agent) or self.truncations.get(agent):
-            if action is not None:
-                raise ValueError("terminated or truncated agents must be stepped with None")
-            self._remove(agent)
-            self.rewards = dict.fromkeys(self.agents, 0.0)  # a removal step earns nothing
-            self._select_next()
-            return
-        if action is None:
-            raise ValueError("a live agent needs an action")
-        request = self.engine.pending()
-        if request is None or self.engine.agent_of(request.power) != agent:
-            raise RuntimeError("environment is out of sync with the engine")
-        self._cumulative_rewards[agent] = 0.0
-        self.engine.act(int(action))
-        self._collect()
-
     # ---------------------------------------------------------------- helpers
     def _collect(self) -> None:
+        """Pay the rewards that accrued, mark agents whose game is over, and let an identity
+        that took over a seat join.
+        """
+
         step_rewards = self.engine.pop_rewards()
         self.rewards = {a: step_rewards.get(a, 0.0) for a in self.agents}
         for agent in self.agents:
@@ -133,15 +201,9 @@ class ColdWarEnv:
                     self.terminations[agent] = True
         self._select_next()
 
-    def _select_next(self) -> None:
-        for agent in self.agents:
-            if self.terminations[agent] or self.truncations[agent]:
-                self.agent_selection = agent
-                return
-        request = self.engine.pending()
-        self.agent_selection = self.engine.agent_of(request.power) if request is not None else ""
-
     def _join(self, agent: str, reward: float) -> None:
+        """Add *agent* mid-campaign with its first *reward*."""
+
         self._seen.add(agent)
         self.agents.append(agent)
         self.rewards[agent] = reward
@@ -151,6 +213,8 @@ class ColdWarEnv:
         self.infos[agent] = self._info()
 
     def _info(self) -> dict[str, Any]:
+        """The date, and the assumptions' digest when numbers are being sampled."""
+
         info: dict[str, Any] = {
             "quarter": calendar.fmt(self.engine.world.quarter),
             "quarters_elapsed": self.engine.world.quarter - calendar.START,
@@ -158,17 +222,6 @@ class ColdWarEnv:
         if self.engine.s.variant is not None:  # sampling: the draw is never observed
             info["assumptions"] = self.engine.s.variant.fingerprint
         return info
-
-    def _remove(self, agent: str) -> None:
-        self.agents.remove(agent)
-        for table in (
-            self.rewards,
-            self._cumulative_rewards,
-            self.terminations,
-            self.truncations,
-            self.infos,
-        ):
-            table.pop(agent, None)
 
 
 __all__ = ["IDENTITIES", "POWERS", "ColdWarEnv"]

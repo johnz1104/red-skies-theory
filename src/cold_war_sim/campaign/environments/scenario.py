@@ -1,24 +1,11 @@
-"""Single-event scenarios: one major event played from an entry state (user, 2026-10-20).
+"""Single-event scenarios: one major event played from an entry state.
 
 An **entry** is the engine's state at the end of the director phase in the quarter an
-event starts (``EngineConfig.capture``), with the event instantiated at that world: from
-the historical replay (historical choices and chance), or from other campaigns. An
-episode restores an entry, reseeds the event's chance, the computer-run roles and the
-director's hazards from the episode seed, and plays until the event resolves
-(``EngineConfig.scope``).
-
-* **Agents** are the learning identities of the event's power roles that take part (the
-  China seat follows its regime). They are asked only inside the event; their strategy
-  turns, decision events and every other event follow ``npc_policy`` (reference play,
-  historical strategy), and events above ``playable_tier`` run on rails.
-* **Observation** is the campaign's layout (``CampaignEngine.observe``), so a policy can
-  move between scenarios and the campaign.
-* **Reward** is each agent's return in the event's game divided by kappa, at the end:
-  for an event with derived payoffs, the change in its goal score that the outcome
-  causes (with follow-ons), net of its action and effort costs. It is the quantity the
-  game's equilibria are computed on, so learned play can be scored by exploitability.
-
-Entries hold no compiled catalog (sampling off), so they pickle (:func:`save_entries`).
+event starts, with the event instantiated at that world. An episode restores an entry,
+reseeds the event's chance, the computer-run roles and the director's hazards from the
+episode seed, and plays until the event resolves. The agents are the identities of the
+event's power roles; each is rewarded with its return in the event's game divided by
+kappa, the quantity the game's equilibria are computed on.
 """
 
 from __future__ import annotations
@@ -26,43 +13,78 @@ from __future__ import annotations
 import pickle
 from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, ClassVar
 
 import numpy as np
 
-from . import calendar
-from .catalog import Catalog, load_catalog
-from .decisions import MAX_OPTIONS
-from .engine import CampaignEngine, EngineConfig, EngineState
-from .policies import make_policy
-from .rng import stream
-from .state import IDENTITIES, POWERS, identity, seat
+from ...records import Record
+from ..catalog.core import Catalog, load_catalog
+from ..decisions.policies import make_policy
+from ..engine.core import CampaignEngine, EngineConfig, EngineState
+from ..engine.reproducibility import stream
+from ..world import calendar
+from ..world.state import IDENTITIES, POWERS, identity, seat
+from .campaign import AgentCycle
 
 ENTRY_SOURCES = ("historical", "campaign")
-# the layout of pickled engine states; older entry files are refused (E52: the world
-# gained ``resolved``)
-ENTRY_FORMAT = 2
+# Version of the saved state layout. Increase this when a change to stored fields
+# would make earlier scenarios incompatible.
+ENTRY_FORMAT = 5
+
+# Saved scenarios record the module where each class was defined. These moves
+# kept the same fields, so existing scenarios can still be restored.
+_ENTRY_MODULES = {
+    "cold_war_sim.campaign.engine.config": "cold_war_sim.campaign.engine.state",
+    "cold_war_sim.campaign.engine_state": "cold_war_sim.campaign.engine.state",
+    "cold_war_sim.campaign.state": "cold_war_sim.campaign.world.state",
+    "cold_war_sim.campaign.scenario": "cold_war_sim.campaign.environments.scenario",
+    "cold_war_sim.families.alignment.game": "cold_war_sim.families.alignment",
+    "cold_war_sim.families.alignment.params": "cold_war_sim.families.alignment",
+    "cold_war_sim.families.intervention.game": "cold_war_sim.families.intervention",
+    "cold_war_sim.families.intervention.params": "cold_war_sim.families.intervention",
+    "cold_war_sim.families.crisis.roles": "cold_war_sim.families.crisis.params",
+    "cold_war_sim.families.crisis.options": "cold_war_sim.families.crisis.params",
+    "cold_war_sim.families.attrition.state": "cold_war_sim.families.attrition.game",
+    "cold_war_sim.families.bargaining.params": "cold_war_sim.families.bargaining.game",
+}
 
 
-@dataclass(frozen=True)
-class Entry:
+class _EntryUnpickler(pickle.Unpickler):
+    """Restore scenario classes saved under their earlier module names."""
+
+    def find_class(self, module: str, name: str) -> Any:
+        return super().find_class(_ENTRY_MODULES.get(module, module), name)
+
+
+class Entry(Record):
     """An event's entry state: where it came from, and the engine snapshot."""
 
-    event_id: str
-    source: str  # "historical" or "campaign"
-    seed: int
-    quarter: int
-    state: EngineState
-    catalog: str = ""  # Catalog.digest at capture ("" in entries saved before E50)
-    format: int = 1  # ENTRY_FORMAT at capture (1 in entries saved before E52)
+    def __init__(
+        self,
+        event_id: str,
+        source: str,
+        seed: int,
+        quarter: int,
+        state: EngineState,
+        catalog: str = "",
+        format: int = 1,
+    ) -> None:
+        self.event_id = event_id
+        self.source = source  # "historical" or "campaign"
+        self.seed = seed
+        self.quarter = quarter
+        self.state = state
+        self.catalog = catalog  # Catalog.digest at capture ("" in entries saved before)
+        self.format = format  # ENTRY_FORMAT at capture (1 in entries saved before)
 
     def __deepcopy__(self, memo: dict[int, object]) -> Entry:
         return self
 
     @property
     def label(self) -> str:
+        """A readable name: the event, its date, and where the entry came from."""
+
         return f"{self.event_id}@{calendar.fmt(self.quarter)}:{self.source}/{self.seed}"
 
 
@@ -94,7 +116,7 @@ def capture_entries(
         capture=wanted,
     )
     if temperature is not None:
-        config = replace(config, baseline_temperature=temperature)
+        config = config.replace(baseline_temperature=temperature)
     entries: dict[str, list[Entry]] = {e: [] for e in sorted(wanted)}
     for seed in seeds if not historical else (0,):
         engine = CampaignEngine(catalog, config)
@@ -122,9 +144,11 @@ def capture_entries(
 
 
 def check_entries(entries: Mapping[str, Sequence[Entry]], catalog: Catalog) -> None:
-    """Raise if any entry was captured under another catalog. An entry holds its event's
-    game as bound when it started, so a later edit to the data would not reach it (E50:
-    the Cuba entries trained in E48 predated its officers)."""
+    """Reject saved scenarios whose format or catalog differs from the current one.
+
+    Each entry keeps the game as it was when the event started. Changing the
+    catalog cannot update that saved game, so the entry must be captured again.
+    """
 
     old = [e for items in entries.values() for e in items if e.format != ENTRY_FORMAT]
     if old:
@@ -144,6 +168,8 @@ _CATALOG: Catalog | None = None
 
 
 def _capture_one(job: tuple[tuple[str, ...], int, int | None]) -> dict[str, list[Entry]]:
+    """The entries of one reference-play campaign, on a worker process."""
+
     global _CATALOG
     if _CATALOG is None:
         _CATALOG = load_catalog()
@@ -170,6 +196,8 @@ def capture_campaign_entries(
 
 
 def save_entries(path: Path, entries: Mapping[str, Sequence[Entry]]) -> None:
+    """Pickle *entries* to *path*."""
+
     with path.open("wb") as handle:
         pickle.dump({k: list(v) for k, v in entries.items()}, handle)
 
@@ -178,12 +206,21 @@ def load_entries(path: Path) -> dict[str, list[Entry]]:
     """Entries saved by :func:`save_entries`. They are pickles, which can run code when
     loaded: load only files you made yourself."""
 
-    with path.open("rb") as handle:
-        loaded: dict[str, list[Entry]] = pickle.load(handle)  # our own cache: trusted
+    try:
+        with path.open("rb") as handle:
+            loaded: dict[str, list[Entry]] = _EntryUnpickler(handle).load()  # trusted cache
+    except (pickle.UnpicklingError, AttributeError, ImportError, TypeError, IndexError) as error:
+        # the file pickles classes as they were when it was saved
+        raise ValueError(
+            f"{path} was saved by older code and no longer loads ({type(error).__name__}); "
+            "recapture it with `rl entries`"
+        ) from error
     return loaded
 
 
 def merge_entries(*pools: Mapping[str, Sequence[Entry]]) -> dict[str, list[Entry]]:
+    """The union of several sets of entries, by event."""
+
     merged: dict[str, list[Entry]] = {}
     for pool in pools:
         for event_id, items in pool.items():
@@ -202,7 +239,7 @@ def power_roles(engine: CampaignEngine, event_id: str) -> tuple[str, ...]:
     return tuple(r for r in major.power_roles() if r in roles)
 
 
-class ScenarioEnv:
+class ScenarioEnv(AgentCycle):
     """An AEC-shaped multi-agent environment over single-event scenarios (the same
     interface as :class:`~.env.ColdWarEnv`)."""
 
@@ -227,7 +264,7 @@ class ScenarioEnv:
             raise ValueError("event weights must be non-negative and not all zero")
         self.weights = raw / raw.sum()
         base = config or EngineConfig(npc_policy="equilibrium", playable_tier=1)
-        self.config = replace(base, capture=frozenset(), scope=None)
+        self.config = base.replace(capture=frozenset(), scope=None)
         catalog = catalog or load_catalog()
         check_entries(self.entries, catalog)
         self.engine = CampaignEngine(catalog, self.config)
@@ -247,15 +284,11 @@ class ScenarioEnv:
         self.agent_selection: str = ""
         self.expected = False  # this episode's returns are chance-expected (instant events)
 
-    @property
-    def observation_size(self) -> int:
-        return len(self.engine.feature_names)
-
-    @property
-    def action_size(self) -> int:
-        return MAX_OPTIONS
-
     def reset(self, seed: int = 0, event: str | None = None, entry: int | None = None) -> None:
+        """Restore an entry (drawn from *seed* unless *event* or *entry* is given), reseed
+        its randomness from *seed*, and run to the first agent decision.
+        """
+
         rng = np.random.default_rng(seed)
         if event is None:
             event = self.events[int(rng.choice(len(self.events), p=self.weights))]
@@ -263,7 +296,7 @@ class ScenarioEnv:
         chosen = pool[int(rng.integers(len(pool))) if entry is None else entry]
         self.event_id, self.entry = event, chosen
         engine = self.engine
-        engine.config = replace(self.config, scope=event)
+        engine.config = self.config.replace(scope=event)
         engine.restore(chosen.state)
         _reseed(engine.s, event, int(seed))
         self.expected = engine.expects_scope()
@@ -279,42 +312,8 @@ class ScenarioEnv:
         self.terminations = dict.fromkeys(self.agents, False)
         self.truncations = dict.fromkeys(self.agents, False)
         self.infos = {a: {} for a in self.agents}
-        self._totals = dict.fromkeys(self.agents, 0.0)  # chance-expected returns (E50)
+        self._totals = dict.fromkeys(self.agents, 0.0)  # chance-expected returns
         engine.resume()
-        self._collect()
-
-    def observe(self, agent: str) -> np.ndarray:
-        return self.engine.observe(agent)
-
-    def action_mask(self, agent: str) -> np.ndarray:
-        return self.engine.action_mask(agent)
-
-    def last(self) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        agent = self.agent_selection
-        return (
-            self.observe(agent),
-            self._cumulative_rewards[agent],
-            self.terminations[agent],
-            self.truncations[agent],
-            self.infos[agent],
-        )
-
-    def step(self, action: int | None) -> None:
-        agent = self.agent_selection
-        if self.terminations.get(agent) or self.truncations.get(agent):
-            if action is not None:
-                raise ValueError("terminated or truncated agents must be stepped with None")
-            self._remove(agent)
-            self.rewards = dict.fromkeys(self.agents, 0.0)  # a removal step earns nothing
-            self._select_next()
-            return
-        if action is None:
-            raise ValueError("a live agent needs an action")
-        request = self.engine.pending()
-        if request is None or self.engine.agent_of(request.power) != agent:
-            raise RuntimeError("environment is out of sync with the engine")
-        self._cumulative_rewards[agent] = 0.0
-        self.engine.act(int(action))
         self._collect()
 
     def returns(self) -> dict[str, float]:
@@ -341,12 +340,18 @@ class ScenarioEnv:
         return {outcome: 1.0} if outcome is not None else {}
 
     def outcome(self) -> str | None:
+        """The event's outcome label, once it has resolved."""
+
         if not self.engine.s.scope_done:
             return None
         return self.engine.world.outcomes.get(self.event_id)
 
     # ---------------------------------------------------------------- helpers
     def _collect(self) -> None:
+        """Pay each agent its return in the event's game over kappa: as it accrues in
+        expectation, or at the event's end.
+        """
+
         self.engine.pop_rewards()  # the campaign's goal reward is not a scenario's reward
         self.rewards = dict.fromkeys(self.agents, 0.0)
         if self.expected:  # payoffs as the engine counts them in expectation
@@ -367,37 +372,20 @@ class ScenarioEnv:
             self.infos[agent] = self._info()
         self._select_next()
 
-    def _select_next(self) -> None:
-        for agent in self.agents:
-            if self.terminations[agent] or self.truncations[agent]:
-                self.agent_selection = agent
-                return
-        request = self.engine.pending()
-        self.agent_selection = self.engine.agent_of(request.power) if request is not None else ""
-
     def _info(self) -> dict[str, Any]:
+        """The event, the entry, the date, and the path's survival weight."""
+
         info: dict[str, Any] = {
             "event": self.event_id,
             "entry": self.entry.label if self.entry is not None else "",
             "quarter": calendar.fmt(self.engine.world.quarter),
-            # the weight of this episode's path so far (chance-expected returns, E50)
+            # the weight of this episode's path so far (chance-expected returns)
             "survival": 1.0 if self.engine.s.expected is None else self.engine.s.expected.survival,
         }
         if self.engine.done:
             info["outcome"] = self.outcome()
             info["resolved"] = self.engine.s.scope_done
         return info
-
-    def _remove(self, agent: str) -> None:
-        self.agents.remove(agent)
-        for table in (
-            self.rewards,
-            self._cumulative_rewards,
-            self.terminations,
-            self.truncations,
-            self.infos,
-        ):
-            table.pop(agent, None)
 
 
 def _reseed(state: EngineState, event_id: str, seed: int) -> None:
