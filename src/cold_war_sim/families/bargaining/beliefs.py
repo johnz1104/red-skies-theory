@@ -1,49 +1,15 @@
-"""Perfect Bayesian equilibrium of bargaining with hidden resolve and a contest.
-
-Used by :class:`~.bargaining.BargainingEquilibriumPolicy` for bargaining games with
-``types`` or a ``contest``. Each typed side is ``strong`` (low per-period cost of
-carrying on) or ``weak`` (high cost), known only to itself. Public beliefs are
-mu_A = P(A strong) and mu_B = P(B strong); an untyped side has a single type and
-belief 1. The solution is a backward induction over (commitments, period,
-position, mu_A, mu_B), with beliefs on uniform grids and linear interpolation.
-
-At every node:
-
-* **the responder screens.** Given the belief about the proposer after the offer,
-  each responder type accepts when its agreement value is at least its value of
-  rejecting. When the weak (high-cost) type would accept at the current belief but
-  not if a rejection marked it as strong, it mixes so that its indifference pins
-  the belief after a rejection (Fudenberg and Tirole 1991, ch. 10). An unexpected
-  rejection is read as strength.
-* **the proposer signals** (when typed). Pure offer profiles (strong type's offer,
-  weak type's offer) are enumerated, with beliefs set by Bayes' rule on the path.
-  *Stated rule:* an unexpected offer is read as weakness (belief 0), and among the
-  profiles no type wants to leave, the one best for the proposer at the current
-  belief is played (``selection: proposer_best``), or the best pooling profile
-  when one exists (``pooling_first``). If no pure profile survives, the weak type
-  mixes between the strong type's offer and its own best offer (semi-separating),
-  with the mixture set by its indifference.
-
-Commitment choices by a typed side are signals and use the same rule. Nodes that
-needed the semi-separating mixture, or a last-resort fallback, are counted in
-:attr:`BeliefSolution.report`.
-"""
+"""Bargaining with private types: signaling, updated beliefs and continuation values."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
-from .bargaining import (
-    STRONG,
-    TOLERANCE,
-    BargainingParams,
-    BargainingState,
-    ratify_choices,
-    side_payoff,
-)
+from ...records import Record
+from .game import STRONG, TOLERANCE, BargainingParams, BargainingState, side_payoff
+from .solve import ratify_choices
 
 EPS = 1e-9
 SEMI_ITERATIONS = 24
@@ -51,17 +17,228 @@ EDGE_TOLERANCE = 1e-6
 Array = np.ndarray
 
 
-@dataclass(frozen=True)
-class SideTypes:
-    """A side's types, their delay costs, its prior and its belief grid."""
+class Signal(Record):
+    """A proposer's (or committer's) behaviour at a vector of belief points."""
 
-    kinds: tuple[str, ...]
-    costs: tuple[float, ...]
-    prior: float
-    grid: Array
+    def __init__(
+        self,
+        probs: Array,
+        post: Array,
+        semi: Array,
+        fallback: Array,
+        edge: Array | None = None,
+    ) -> None:
+        self.probs = probs  # (types, n, options): each type's distribution over options
+        self.post = post  # (n, options): the observer's belief about the sender after each option
+        self.semi = semi  # (n,) bool: semi-separating mixture used
+        self.fallback = fallback  # (n,) bool: no equilibrium profile found; best guess played
+        # (n, 3): for a semi-separating offer at which the observer's response jumps, the
+        # bracket (lo, hi) around the jump and the weight on the response just above it
+        self.edge = edge
+
+
+def _trivial_signal(mu: float) -> Signal:
+    """The signal of a side with nothing to choose: its first option, belief unchanged."""
+
+    probs = np.zeros((2, 1, 2))
+    probs[:, 0, 0] = 1.0
+    return Signal(probs, np.full((1, 2), mu), np.zeros(1, bool), np.zeros(1, bool), None)
+
+
+def _top3(table: Array) -> tuple[Array, Array]:
+    """Top three values and their option indices along axis 0 (options, n)."""
+
+    order = np.argsort(-table, axis=0, kind="stable")[:3]
+    return np.take_along_axis(table, order, axis=0), order
+
+
+def _best_excluding(top_v: Array, top_i: Array, *excluded: int) -> Array:
+    """The best value among the options other than *excluded*, from the top three by point."""
+
+    out = np.full(top_v.shape[1], -np.inf)
+    filled = np.zeros(top_v.shape[1], dtype=bool)
+    for k in range(top_v.shape[0]):
+        ok = ~filled
+        for e in excluded:
+            ok &= top_i[k] != e
+        out = np.where(ok, top_v[k], out)
+        filled |= ok
+    return out
+
+
+def select_signal(
+    tables: dict[str, list[Array]],
+    mu: Array,
+    selection: str,
+    value_at: Callable[[Array, int, Array], Array],
+    *,
+    typed: bool,
+) -> Signal:
+    """A typed sender's choice among options, as a signalling equilibrium.
+
+    ``tables[key][x]`` is each type's value (types, n) of option x when the observer's
+    belief after it is ``mu`` (key ``"p"``), 0 or 1; ``value_at(beliefs, x, idx)`` gives the
+    same for the points *idx* at any beliefs.
+
+    Pure profiles (the strong type's option, the weak type's option) are enumerated, with
+    beliefs by Bayes' rule on the path. An unexpected option is read as weakness (belief
+    0). Among the profiles no type wants to leave, the sender plays the one best for it at
+    the current belief (``proposer_best``), or the best pooling profile when one exists
+    (``pooling_first``). If no pure profile survives, the weak type mixes between the
+    strong type's option and its own best one, with the mixture set by its indifference
+    (semi-separating).
+    """
+
+    options = len(tables["p"])
+    n = mu.shape[0]
+    probs = np.zeros((2 if typed else 1, n, options))
+    post = np.zeros((n, options))
+    semi = np.zeros(n, dtype=bool)
+    fallback = np.zeros(n, dtype=bool)
+    edge = np.full((n, 3), np.nan)
+    if not typed:
+        values = np.stack([v[0] for v in tables["p"]])  # (options, n)
+        best = np.argmax(values >= values.max(axis=0) - TOLERANCE, axis=0)  # earliest maximum
+        probs[0, np.arange(n), best] = 1.0
+        post[:] = mu[:, None]
+        return Signal(probs, post, semi, fallback, edge)
+    s, w = 0, 1
+    v_mu = {k: np.stack([tables["p"][x][k] for x in range(options)]) for k in (s, w)}
+    v_0 = {k: np.stack([tables["0"][x][k] for x in range(options)]) for k in (s, w)}
+    v_1 = {k: np.stack([tables["1"][x][k] for x in range(options)]) for k in (s, w)}
+    top0 = {k: _top3(v_0[k]) for k in (s, w)}
+    # a strong-only offer is on the path only if the strong type has positive probability;
+    # at belief 0 it is unexpected, so it is read as weakness like any other surprise
+    strong_possible = mu > EPS
+    best_key = np.full(n, -np.inf)
+    choice_s = np.zeros(n, dtype=int)
+    choice_w = np.zeros(n, dtype=int)
+    bonus = 1e6 if selection == "pooling_first" else 0.0
+    for xs in range(options):
+        for xw in range(options):
+            if xs == xw:
+                on_s, on_w = v_mu[s][xs], v_mu[w][xs]
+                dev_s = _best_excluding(*top0[s], xs)
+                dev_w = _best_excluding(*top0[w], xs)
+                key = mu * on_s + (1 - mu) * on_w + bonus
+            else:
+                on_s = np.where(strong_possible, v_1[s][xs], v_0[s][xs])
+                on_w = v_0[w][xw]
+                mimic_w = np.where(strong_possible, v_1[w][xs], v_0[w][xs])
+                dev_s = _best_excluding(*top0[s], xs)
+                dev_w = np.maximum(mimic_w, _best_excluding(*top0[w], xs, xw))
+                key = mu * on_s + (1 - mu) * on_w
+            valid = (on_s >= dev_s - TOLERANCE) & (on_w >= dev_w - TOLERANCE)
+            better = valid & (key > best_key + TOLERANCE)
+            best_key = np.where(better, key, best_key)
+            choice_s = np.where(better, xs, choice_s)
+            choice_w = np.where(better, xw, choice_w)
+    found = np.isfinite(best_key)
+    rows = np.arange(n)
+    pooled = found & (choice_s == choice_w)
+    separated = found & (choice_s != choice_w)
+    probs[s, rows, choice_s] = np.where(found, 1.0, 0.0)
+    probs[w, rows, choice_w] = np.where(found, 1.0, 0.0)
+    post[rows, choice_s] = np.where(pooled, mu, np.where(separated & strong_possible, 1.0, 0.0))
+    # off-path options keep belief 0; the weak type's separate offer has belief 0 too
+    missing = ~found
+    if missing.any():
+        idx = np.nonzero(missing)[0]
+        m_mu = mu[idx]
+        best = np.full(idx.size, -np.inf)
+        semi_choice = np.zeros((idx.size, 3))  # xs, xw, posterior
+        semi_edge = np.full((idx.size, 3), np.nan)
+        for xs in range(options):
+            alt = _best_excluding(top0[w][0][:, idx], top0[w][1][:, idx], xs)
+            alt_x = _argbest_excluding(v_0[w][:, idx], xs)
+
+            def gap(v: Array, xs: int = xs, alt: Array = alt) -> Array:
+                return np.asarray(value_at(v, xs, idx)[w] - alt)
+
+            # the weak type copies the strong type's offer xs just often enough that
+            # the belief after xs leaves it indifferent: gap(v*) = 0 for v* in [mu, 1]
+            lo, hi = m_mu.copy(), np.ones(idx.size)
+            g_lo, g_hi = gap(lo), gap(hi)
+            ok = g_lo * g_hi <= TOLERANCE
+            rising = g_hi >= g_lo
+            for _ in range(SEMI_ITERATIONS):
+                mid = 0.5 * (lo + hi)
+                g_mid = gap(mid)
+                below = np.where(rising, g_mid < 0, g_mid > 0)  # root lies above mid
+                lo = np.where(below, mid, lo)
+                hi = np.where(below, hi, mid)
+            v_star = 0.5 * (lo + hi)
+            strong_val = value_at(v_star, xs, idx)[s]
+            # if the weak type's value jumps across its alternative (the observer's response
+            # switches at v*), the observer, indifferent there, mixes its two responses with
+            # the weight that leaves the weak type indifferent
+            g_star = gap(v_star)
+            jump = ok & (np.abs(g_star) > EDGE_TOLERANCE)
+            lam = np.zeros(idx.size)
+            if jump.any():
+                v_lo, v_hi = value_at(lo, xs, idx), value_at(hi, xs, idx)
+                g_left, g_right = v_lo[w] - alt, v_hi[w] - alt
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    lam = np.clip(-g_left / (g_right - g_left), 0.0, 1.0)
+                lam = np.where(jump, lam, 0.0)
+                strong_val = np.where(jump, lam * v_hi[s] + (1 - lam) * v_lo[s], strong_val)
+            dev_s = _best_excluding(top0[s][0][:, idx], top0[s][1][:, idx], xs)
+            ok &= strong_val >= dev_s - TOLERANCE
+            key = m_mu * strong_val + (1 - m_mu) * alt
+            better = ok & (key > best + TOLERANCE)
+            best = np.where(better, key, best)
+            semi_choice[better] = np.stack([np.full(idx.size, xs), alt_x, v_star], axis=1)[better]
+            fresh = np.stack([lo, hi, lam], axis=1)
+            fresh[~jump] = np.nan
+            semi_edge[better] = fresh[better]
+        done = np.isfinite(best)
+        for j, e in enumerate(idx):
+            if done[j]:
+                xs, xw, v_star = int(semi_choice[j, 0]), int(semi_choice[j, 1]), semi_choice[j, 2]
+                m = mu[e]
+                rho = 1.0 if v_star <= 0 else min(1.0, m * (1 - v_star) / (v_star * (1 - m)))
+                probs[s, e, xs] = 1.0
+                probs[w, e, xs] = rho
+                probs[w, e, xw] = 1.0 - rho
+                post[e, xs] = v_star
+                semi[e] = True
+                edge[e] = semi_edge[j]
+            else:  # last resort: pool on the best ex-ante offer at belief mu
+                ex_ante = m_mu[j] * v_mu[s][:, e] + (1 - m_mu[j]) * v_mu[w][:, e]
+                x = int(np.argmax(ex_ante))
+                probs[:, e, x] = 1.0
+                post[e, x] = mu[e]
+                fallback[e] = True
+    return Signal(probs, post, semi, fallback, edge)
+
+
+def _argbest_excluding(table: Array, excluded: int) -> Array:
+    """The index of the best option other than *excluded*, by point."""
+
+    masked = table.copy()
+    masked[excluded] = -np.inf
+    return np.asarray(np.argmax(masked, axis=0), dtype=float)
+
+
+class SideTypes(Record):
+    """A side's types with their delay costs, its prior P(strong), and its belief grid."""
+
+    def __init__(
+        self,
+        kinds: tuple[str, ...],
+        costs: tuple[float, ...],
+        prior: float,
+        grid: Array,
+    ) -> None:
+        self.kinds = kinds
+        self.costs = costs
+        self.prior = prior
+        self.grid = grid
 
     @property
     def typed(self) -> bool:
+        """Whether the side has more than one type."""
+
         return len(self.kinds) > 1
 
     def weights(self, mu: Array) -> Array:
@@ -72,33 +249,40 @@ class SideTypes:
         return np.stack([mu, 1.0 - mu])
 
 
-@dataclass
-class Signal:
-    """A proposer's (or committer's) behaviour at a vector of belief points."""
+class Response(Record):
+    """The responder's behaviour to one offer at a vector of belief points, with the values
+    it leads to.
+    """
 
-    probs: Array  # (types, n, options): each type's distribution over options
-    post: Array  # (n, options): the observer's belief about the sender after each option
-    semi: Array  # (n,) bool: semi-separating mixture used
-    fallback: Array  # (n,) bool: no equilibrium profile found; best guess played
-    # (n, 3): for a semi-separating offer at which the observer's response jumps, the
-    # bracket (lo, hi) around the jump and the weight on the response just above it
-    edge: Array | None = None
-
-
-@dataclass
-class Response:
-    accept: Array  # (responder types, n): probability of accepting
-    post: Array  # (n,): belief about the responder after a rejection
-    values: Array  # (2, kA, kB, n): both sides' values for each true type pair
-    proposer: Array  # (proposer types, n): proposer's expected value by its type
-    fallback: Array  # (n,) bool
+    def __init__(
+        self,
+        accept: Array,
+        post: Array,
+        values: Array,
+        proposer: Array,
+        fallback: Array,
+    ) -> None:
+        self.accept = accept  # (responder types, n): probability of accepting
+        self.post = post  # (n,): belief about the responder after a rejection
+        self.values = values  # (2, kA, kB, n): both sides' values for each true type pair
+        self.proposer = proposer  # (proposer types, n): proposer's expected value by its type
+        self.fallback = fallback  # (n,) bool
 
 
-@dataclass
-class Stage:
-    signal: Signal
-    responses: list[Response]  # one per offer, at that offer's posterior
-    values: Array  # (2, kA, kB, n)
+class Stage(Record):
+    """One period at a vector of belief points: the proposer's signal, the response to each
+    offer at that offer's posterior, and the resulting values.
+    """
+
+    def __init__(
+        self,
+        signal: Signal,
+        responses: list[Response],
+        values: Array,
+    ) -> None:
+        self.signal = signal
+        self.responses = responses  # one per offer, at that offer's posterior
+        self.values = values  # (2, kA, kB, n)
 
 
 def _grid_index(grid: Array, mu: Array) -> tuple[Array, Array, Array]:
@@ -113,22 +297,32 @@ def _grid_index(grid: Array, mu: Array) -> tuple[Array, Array, Array]:
     return i0, i1, (m - grid[i0]) / (grid[i1] - grid[i0])
 
 
-@dataclass
 class BeliefSolution:
-    """Solved value tables and the stage rules that produce live behaviour."""
+    """Solve bargaining with private resolve on a grid of public beliefs.
 
-    params: BargainingParams
-    proposer_grid: int = 21
-    responder_grid: int = 51
-    sides: dict[str, SideTypes] = field(init=False)
-    values: dict[tuple[tuple[bool, bool], int, int], Array] = field(init=False)
-    report: dict[str, int] = field(init=False)
+    A side knows its own type: strong means a lower delay cost, weak a higher
+    one. Public beliefs are mu_A = P(A strong) and mu_B = P(B strong).
+    An untyped side has one type and belief 1.
 
-    def __post_init__(self) -> None:
+    Backward induction works over commitments, period, contest position and
+    both beliefs. Values between belief grid points use linear interpolation.
+    Responders screen types through acceptance choices; typed proposers and
+    sides making commitments signal through ``select_signal``.
+
+    ``values`` stores both sides' payoff tables. ``report`` counts choices
+    that needed a partially revealing mixture or a fallback.
+    """
+
+    def __init__(
+        self, params: BargainingParams, proposer_grid: int = 21, responder_grid: int = 51
+    ) -> None:
+        self.params = params
+        self.proposer_grid = proposer_grid
+        self.responder_grid = responder_grid
         p = self.params
         fixed = p.proposers if p.proposers != "alternate" else None
         self.sides = {key: self._side_types(key, fixed) for key in ("A", "B")}
-        self.values = {}
+        self.values: dict[tuple[tuple[bool, bool], int, int], Array] = {}
         self.report = {"semi_separating": 0, "fallback": 0, "screen_fallback": 0}
         self._terminal_cache: dict[tuple[object, ...], Array] = {}
         a_options = (False, True) if p.a.commitment is not None else (False,)
@@ -141,6 +335,8 @@ class BeliefSolution:
 
     # ------------------------------------------------------------------ set-up
     def _side_types(self, key: str, fixed: str | None) -> SideTypes:
+        """Side *key*'s types and belief grid (finer for the responder; the prior is a grid point)."""
+
         p = self.params
         types = p.types_of(key)
         if types is None:
@@ -150,6 +346,8 @@ class BeliefSolution:
         return SideTypes((STRONG, "weak"), (types.strong_cost, types.weak_cost), types.prior, grid)
 
     def positions(self, t: int) -> list[int]:
+        """The contest positions reachable in period *t* without a collapse."""
+
         contest = self.params.contest
         if contest is None:
             return [0]
@@ -157,12 +355,16 @@ class BeliefSolution:
 
     @property
     def shape(self) -> tuple[int, int]:
+        """The number of types of A and of B."""
+
         return len(self.sides["A"].kinds), len(self.sides["B"].kinds)
 
     # --------------------------------------------------------------- terminals
     def _terminal(
         self, label: str, share: float | None, period: int, agreed: int | None, combo: tuple
     ) -> Array:
+        """Both sides' payoffs at a terminal, for each true type pair: shape (2, kA, kB)."""
+
         key = (label, share, period, agreed, combo)
         cached = self._terminal_cache.get(key)
         if cached is not None:
@@ -188,6 +390,8 @@ class BeliefSolution:
         return out
 
     def accept_values(self, combo: tuple, t: int, x: int) -> Array:
+        """Both sides' payoffs if offer *x* is accepted in period *t* (a veto if consent refuses)."""
+
         p = self.params
         share = p.grid[x]
         ratified = all(ratify_choices(p.consent, share))
@@ -195,6 +399,8 @@ class BeliefSolution:
 
     # ------------------------------------------------------------ continuation
     def _interpolate(self, combo: tuple, t: int, i: int, mu_a: Array, mu_b: Array) -> Array:
+        """The node values at beliefs (mu_A, mu_B), by bilinear interpolation on the grids."""
+
         table = self.values[(combo, t, i)]
         a0, a1, fa = _grid_index(self.sides["A"].grid, mu_a)
         b0, b1, fb = _grid_index(self.sides["B"].grid, mu_b)
@@ -206,6 +412,8 @@ class BeliefSolution:
         )
 
     def _next(self, combo: tuple, t1: int, i: int, mu_a: Array, mu_b: Array) -> Array:
+        """The values at the start of period *t1*: the impasse payoffs at the horizon."""
+
         p = self.params
         if t1 >= p.horizon:
             values = self._terminal("impasse", None, p.horizon, None, combo)
@@ -213,6 +421,10 @@ class BeliefSolution:
         return self._interpolate(combo, t1, i, mu_a, mu_b)
 
     def _moved(self, combo: tuple, t: int, j: int, mu_a: Array, mu_b: Array) -> Array:
+        """The values after the contest moves the position to *j* in period *t*: a collapse
+        ends the game on the winner's terms.
+        """
+
         contest = self.params.contest
         assert contest is not None
         if j >= contest.steps_up or j <= -contest.steps_down:
@@ -245,10 +457,14 @@ class BeliefSolution:
 
     # ------------------------------------------------------------------ stages
     def _roles(self, t: int) -> tuple[str, str]:
+        """The proposer and the responder in period *t*."""
+
         proposer = self.params.proposer(t)
         return proposer, ("B" if proposer == "A" else "A")
 
     def _beliefs_for(self, proposer: str, mu_p: Array, mu_r: Array) -> tuple[Array, Array]:
+        """(mu_A, mu_B) from the beliefs about the proposer and about the responder."""
+
         return (mu_p, mu_r) if proposer == "A" else (mu_r, mu_p)
 
     def rejection_grid(self, combo: tuple, t: int, i: int, post_p: Array) -> Array:
@@ -285,7 +501,14 @@ class BeliefSolution:
         mu_r: Array,
         prepared: tuple[Array, Array] | None = None,
     ) -> Response:
-        """Responder behaviour to offer *x* when the proposer is believed strong w.p. post_p."""
+        """The responder's behaviour to offer *x* when the proposer is believed strong w.p. post_p.
+
+        **Screening.** Each responder type accepts when its agreement value is at least its
+        value of rejecting. When the weak (high-cost) type would accept at the current belief
+        but not if a rejection marked it as strong, it mixes so that its indifference pins the
+        belief after a rejection (Fudenberg and Tirole 1991, ch. 10). An unexpected rejection
+        is read as strength.
+        """
 
         _, responder = self._roles(t)
         rv, r_grid = self.prepare(combo, t, i, post_p) if prepared is None else prepared
@@ -536,6 +759,8 @@ class BeliefSolution:
         return _blend(base, _scatter(mixed, idx, base), mask)
 
     def _node_table(self, combo: tuple, t: int, i: int) -> Array:
+        """The node's values on the full belief grid: shape (2, kA, kB, |grid A|, |grid B|)."""
+
         ga, gb = self.sides["A"].grid, self.sides["B"].grid
         mu_a, mu_b = np.meshgrid(ga, gb, indexing="ij")
         values = self.stage(combo, t, i, mu_a.ravel(), mu_b.ravel()).values
@@ -601,6 +826,8 @@ class BeliefSolution:
 
 
 def _blend(base: Response, other: Response, mask: Array) -> Response:
+    """*base* with *other*'s entries at the points where *mask* holds."""
+
     return Response(
         np.where(mask, other.accept, base.accept),
         np.where(mask, other.post, base.post),
@@ -627,175 +854,6 @@ def _scatter(part: Response, idx: Array, like: Response) -> Response:
     )
 
 
-def _trivial_signal(mu: float) -> Signal:
-    probs = np.zeros((2, 1, 2))
-    probs[:, 0, 0] = 1.0
-    return Signal(probs, np.full((1, 2), mu), np.zeros(1, bool), np.zeros(1, bool), None)
-
-
-def _top3(table: Array) -> tuple[Array, Array]:
-    """Top three values and their option indices along axis 0 (options, n)."""
-
-    order = np.argsort(-table, axis=0, kind="stable")[:3]
-    return np.take_along_axis(table, order, axis=0), order
-
-
-def _best_excluding(top_v: Array, top_i: Array, *excluded: int) -> Array:
-    out = np.full(top_v.shape[1], -np.inf)
-    filled = np.zeros(top_v.shape[1], dtype=bool)
-    for k in range(top_v.shape[0]):
-        ok = ~filled
-        for e in excluded:
-            ok &= top_i[k] != e
-        out = np.where(ok, top_v[k], out)
-        filled |= ok
-    return out
-
-
-def select_signal(
-    tables: dict[str, list[Array]],
-    mu: Array,
-    selection: str,
-    value_at: Callable[[Array, int, Array], Array],
-    *,
-    typed: bool,
-) -> Signal:
-    """Choose a sender's options by the stated rule (module docstring).
-
-    ``tables[key][x]`` is each type's value (types, n) of option x when the
-    observer's belief after it is ``mu`` (key ``"p"``), 0 or 1;
-    ``value_at(beliefs, x, idx)`` gives the same for the points *idx* at any beliefs.
-    """
-
-    options = len(tables["p"])
-    n = mu.shape[0]
-    probs = np.zeros((2 if typed else 1, n, options))
-    post = np.zeros((n, options))
-    semi = np.zeros(n, dtype=bool)
-    fallback = np.zeros(n, dtype=bool)
-    edge = np.full((n, 3), np.nan)
-    if not typed:
-        values = np.stack([v[0] for v in tables["p"]])  # (options, n)
-        best = np.argmax(values >= values.max(axis=0) - TOLERANCE, axis=0)  # earliest maximum
-        probs[0, np.arange(n), best] = 1.0
-        post[:] = mu[:, None]
-        return Signal(probs, post, semi, fallback, edge)
-    s, w = 0, 1
-    v_mu = {k: np.stack([tables["p"][x][k] for x in range(options)]) for k in (s, w)}
-    v_0 = {k: np.stack([tables["0"][x][k] for x in range(options)]) for k in (s, w)}
-    v_1 = {k: np.stack([tables["1"][x][k] for x in range(options)]) for k in (s, w)}
-    top0 = {k: _top3(v_0[k]) for k in (s, w)}
-    # a strong-only offer is on the path only if the strong type has positive probability;
-    # at belief 0 it is unexpected, so it is read as weakness like any other surprise
-    strong_possible = mu > EPS
-    best_key = np.full(n, -np.inf)
-    choice_s = np.zeros(n, dtype=int)
-    choice_w = np.zeros(n, dtype=int)
-    bonus = 1e6 if selection == "pooling_first" else 0.0
-    for xs in range(options):
-        for xw in range(options):
-            if xs == xw:
-                on_s, on_w = v_mu[s][xs], v_mu[w][xs]
-                dev_s = _best_excluding(*top0[s], xs)
-                dev_w = _best_excluding(*top0[w], xs)
-                key = mu * on_s + (1 - mu) * on_w + bonus
-            else:
-                on_s = np.where(strong_possible, v_1[s][xs], v_0[s][xs])
-                on_w = v_0[w][xw]
-                mimic_w = np.where(strong_possible, v_1[w][xs], v_0[w][xs])
-                dev_s = _best_excluding(*top0[s], xs)
-                dev_w = np.maximum(mimic_w, _best_excluding(*top0[w], xs, xw))
-                key = mu * on_s + (1 - mu) * on_w
-            valid = (on_s >= dev_s - TOLERANCE) & (on_w >= dev_w - TOLERANCE)
-            better = valid & (key > best_key + TOLERANCE)
-            best_key = np.where(better, key, best_key)
-            choice_s = np.where(better, xs, choice_s)
-            choice_w = np.where(better, xw, choice_w)
-    found = np.isfinite(best_key)
-    rows = np.arange(n)
-    pooled = found & (choice_s == choice_w)
-    separated = found & (choice_s != choice_w)
-    probs[s, rows, choice_s] = np.where(found, 1.0, 0.0)
-    probs[w, rows, choice_w] = np.where(found, 1.0, 0.0)
-    post[rows, choice_s] = np.where(pooled, mu, np.where(separated & strong_possible, 1.0, 0.0))
-    # off-path options keep belief 0; the weak type's separate offer has belief 0 too
-    missing = ~found
-    if missing.any():
-        idx = np.nonzero(missing)[0]
-        m_mu = mu[idx]
-        best = np.full(idx.size, -np.inf)
-        semi_choice = np.zeros((idx.size, 3))  # xs, xw, posterior
-        semi_edge = np.full((idx.size, 3), np.nan)
-        for xs in range(options):
-            alt = _best_excluding(top0[w][0][:, idx], top0[w][1][:, idx], xs)
-            alt_x = _argbest_excluding(v_0[w][:, idx], xs)
-
-            def gap(v: Array, xs: int = xs, alt: Array = alt) -> Array:
-                return np.asarray(value_at(v, xs, idx)[w] - alt)
-
-            # the weak type copies the strong type's offer xs just often enough that
-            # the belief after xs leaves it indifferent: gap(v*) = 0 for v* in [mu, 1]
-            lo, hi = m_mu.copy(), np.ones(idx.size)
-            g_lo, g_hi = gap(lo), gap(hi)
-            ok = g_lo * g_hi <= TOLERANCE
-            rising = g_hi >= g_lo
-            for _ in range(SEMI_ITERATIONS):
-                mid = 0.5 * (lo + hi)
-                g_mid = gap(mid)
-                below = np.where(rising, g_mid < 0, g_mid > 0)  # root lies above mid
-                lo = np.where(below, mid, lo)
-                hi = np.where(below, hi, mid)
-            v_star = 0.5 * (lo + hi)
-            strong_val = value_at(v_star, xs, idx)[s]
-            # if the weak type's value jumps across its alternative (the observer's response
-            # switches at v*), the observer, indifferent there, mixes its two responses with
-            # the weight that leaves the weak type indifferent
-            g_star = gap(v_star)
-            jump = ok & (np.abs(g_star) > EDGE_TOLERANCE)
-            lam = np.zeros(idx.size)
-            if jump.any():
-                v_lo, v_hi = value_at(lo, xs, idx), value_at(hi, xs, idx)
-                g_left, g_right = v_lo[w] - alt, v_hi[w] - alt
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    lam = np.clip(-g_left / (g_right - g_left), 0.0, 1.0)
-                lam = np.where(jump, lam, 0.0)
-                strong_val = np.where(jump, lam * v_hi[s] + (1 - lam) * v_lo[s], strong_val)
-            dev_s = _best_excluding(top0[s][0][:, idx], top0[s][1][:, idx], xs)
-            ok &= strong_val >= dev_s - TOLERANCE
-            key = m_mu * strong_val + (1 - m_mu) * alt
-            better = ok & (key > best + TOLERANCE)
-            best = np.where(better, key, best)
-            semi_choice[better] = np.stack([np.full(idx.size, xs), alt_x, v_star], axis=1)[better]
-            fresh = np.stack([lo, hi, lam], axis=1)
-            fresh[~jump] = np.nan
-            semi_edge[better] = fresh[better]
-        done = np.isfinite(best)
-        for j, e in enumerate(idx):
-            if done[j]:
-                xs, xw, v_star = int(semi_choice[j, 0]), int(semi_choice[j, 1]), semi_choice[j, 2]
-                m = mu[e]
-                rho = 1.0 if v_star <= 0 else min(1.0, m * (1 - v_star) / (v_star * (1 - m)))
-                probs[s, e, xs] = 1.0
-                probs[w, e, xs] = rho
-                probs[w, e, xw] = 1.0 - rho
-                post[e, xs] = v_star
-                semi[e] = True
-                edge[e] = semi_edge[j]
-            else:  # last resort: pool on the best ex-ante offer at belief mu
-                ex_ante = m_mu[j] * v_mu[s][:, e] + (1 - m_mu[j]) * v_mu[w][:, e]
-                x = int(np.argmax(ex_ante))
-                probs[:, e, x] = 1.0
-                post[e, x] = mu[e]
-                fallback[e] = True
-    return Signal(probs, post, semi, fallback, edge)
-
-
-def _argbest_excluding(table: Array, excluded: int) -> Array:
-    masked = table.copy()
-    masked[excluded] = -np.inf
-    return np.asarray(np.argmax(masked, axis=0), dtype=float)
-
-
 class BeliefPolicy:
     """Plays a :class:`BeliefSolution` in live states.
 
@@ -812,23 +870,31 @@ class BeliefPolicy:
 
     # ------------------------------------------------------------- memoized rules
     def commit_a(self) -> Signal:
+        """A's commitment signal at the priors (solved once)."""
+
         if self._commit_a is None:
             self._commit_a = self.solution.commit_a()[0]
         return self._commit_a
 
     def commit_b(self, ca: bool, mu_a: float, mu_b: float) -> Signal:
+        """B's commitment signal after A's choice *ca*, at the beliefs given."""
+
         key = (ca, round(mu_a, 12), round(mu_b, 12))
         if key not in self._commit_b:
             self._commit_b[key] = self.solution.commit_b(ca, mu_a, mu_b)[0]
         return self._commit_b[key]
 
     def stage(self, combo: tuple, t: int, i: int, mu_a: float, mu_b: float) -> Stage:
+        """The period's solution at one belief point (cached)."""
+
         key = (combo, t, i, round(mu_a, 12), round(mu_b, 12))
         if key not in self._stages:
             self._stages[key] = self.solution.stage(combo, t, i, np.array([mu_a]), np.array([mu_b]))
         return self._stages[key]
 
     def _corners(self, key: str, mu: float) -> list[tuple[float, float]]:
+        """The grid points around *mu* with their interpolation weights."""
+
         grid = self.solution.sides[key].grid
         if grid.size == 1:
             return [(float(grid[0]), 1.0)]
@@ -903,66 +969,143 @@ class BeliefPolicy:
     ) -> tuple[tuple[bool, bool], int, float, float, tuple[float, float]]:
         """(commitments, position, mu_A, mu_B, beliefs before the last offer)."""
 
-        p = self.solution.params
-        mu = {"A": self.solution.sides["A"].prior, "B": self.solution.sides["B"].prior}
-        committed = {"A": False, "B": False}
-        position = 0
-        offer: int | None = None
-        pre = (mu["A"], mu["B"])
+        record = PublicRecord(self.solution.sides["A"].prior, self.solution.sides["B"].prior)
         for event in state.events:
-            kind = event[0]
-            if kind == "commit":
-                _, key, choice = event
-                if key == "A":
-                    signal = self.commit_a()
-                else:
-                    signal = self.commit_b(committed["A"], mu["A"], mu["B"])
-                mu[key] = float(signal.post[0, int(choice)])
-                committed[key] = bool(choice)
-                continue
-            combo = (committed["A"], committed["B"])
-            if kind == "offer":
-                _, t, offer = event
-                pre = (mu["A"], mu["B"])
-                mu[p.proposer(t)] = self.posterior(combo, t, position, mu["A"], mu["B"], offer)
-            elif kind == "respond":
-                _, t, accepted = event
-                if not accepted:
-                    assert offer is not None
-                    response = self.response(combo, t, position, offer, pre, mu["A"], mu["B"])
-                    responder = "B" if p.proposer(t) == "A" else "A"
-                    mu[responder] = float(response.post[0])
-            elif kind == "contest":
-                position += int(event[2])
-        return (committed["A"], committed["B"]), position, mu["A"], mu["B"], pre
+            _UPDATES[event[0]](self, record, event)
+        return record.combo, record.position, record.mu["A"], record.mu["B"], record.pre
 
-    def action_probabilities(self, state: BargainingState) -> dict[str, float]:
-        p = self.solution.params
-        legal = state.legal_actions()
-        if state.phase == "consent":
-            assert state.offer is not None
-            ratifies = ratify_choices(p.consent, p.grid[state.offer])[state.consent_index]
-            choice = "ratify" if ratifies else "veto"
-            return {a: (1.0 if a == choice else 0.0) for a in legal}
-        combo, position, mu_a, mu_b, pre = self.track(state)
-        key = {"commit_a": "A", "commit_b": "B"}.get(state.phase)
-        if key is None:
-            proposer = p.proposer(state.period)
-            key = proposer if state.phase == "propose" else ("B" if proposer == "A" else "A")
-        kind = 1 if state.types[key] == "weak" else 0
-        if state.phase == "commit_a":
-            dist = self.commit_a().probs[kind, 0]
-        elif state.phase == "commit_b":
-            dist = self.commit_b(combo[0], mu_a, mu_b).probs[kind, 0]
-        elif state.phase == "propose":
-            dist = self.offers(combo, state.period, position, mu_a, mu_b)[kind]
+    def _on_commit(self, record: PublicRecord, event: tuple[Any, ...]) -> None:
+        """Bayes on a commitment choice: mu_key = the signal's posterior at the choice."""
+
+        _, key, choice = event
+        if key == "A":
+            signal = self.commit_a()
         else:
-            assert state.offer is not None
-            response = self.response(combo, state.period, position, state.offer, pre, mu_a, mu_b)
-            accept = float(response.accept[kind, 0])
-            return {"accept": accept, "reject": 1.0 - accept}
-        total = float(dist.sum())
-        return {a: float(dist[j]) / total for j, a in enumerate(legal)}
+            signal = self.commit_b(record.committed["A"], record.mu["A"], record.mu["B"])
+        record.mu[key] = float(signal.post[0, int(choice)])
+        record.committed[key] = bool(choice)
+
+    def _on_offer(self, record: PublicRecord, event: tuple[Any, ...]) -> None:
+        """Bayes on the proposer's offer; the beliefs before it are kept for the response."""
+
+        _, t, offer = event
+        mu = record.mu
+        record.offer = offer
+        record.pre = (mu["A"], mu["B"])
+        proposer = self.solution.params.proposer(t)
+        mu[proposer] = self.posterior(record.combo, t, record.position, mu["A"], mu["B"], offer)
+
+    def _on_respond(self, record: PublicRecord, event: tuple[Any, ...]) -> None:
+        """Bayes on a rejection (an acceptance ends the game): mu_responder = its posterior."""
+
+        _, t, accepted = event
+        if accepted:
+            return
+        assert record.offer is not None
+        mu = record.mu
+        response = self.response(
+            record.combo, t, record.position, record.offer, record.pre, mu["A"], mu["B"]
+        )
+        responder = "B" if self.solution.params.proposer(t) == "A" else "A"
+        mu[responder] = float(response.post[0])
+
+    def _on_contest(self, record: PublicRecord, event: tuple[Any, ...]) -> None:
+        """The contest moves the position by its public result."""
+
+        record.position += int(event[2])
+
+    # ------------------------------------------------------------------ play
+    def action_probabilities(self, state: BargainingState) -> dict[str, float]:
+        """The mover's choice probabilities at *state*, at the beliefs its public record implies."""
+
+        return _CHOICES[state.phase](self, state)
+
+    def _choose_consent(self, state: BargainingState) -> dict[str, float]:
+        """A ratifier's pure choice, from the backward-solved ratification."""
+
+        p = self.solution.params
+        assert state.offer is not None
+        ratifies = ratify_choices(p.consent, p.grid[state.offer])[state.consent_index]
+        choice = "ratify" if ratifies else "veto"
+        return {a: (1.0 if a == choice else 0.0) for a in state.legal_actions()}
+
+    def _choose_commit_a(self, state: BargainingState) -> dict[str, float]:
+        """A's commitment choice at its type."""
+
+        self.track(state)
+        return _normalized(state, self.commit_a().probs[_weak(state, "A"), 0])
+
+    def _choose_commit_b(self, state: BargainingState) -> dict[str, float]:
+        """B's commitment choice at its type, after A's."""
+
+        combo, _, mu_a, mu_b, _ = self.track(state)
+        return _normalized(state, self.commit_b(combo[0], mu_a, mu_b).probs[_weak(state, "B"), 0])
+
+    def _choose_offer(self, state: BargainingState) -> dict[str, float]:
+        """The proposer's offer distribution at its type."""
+
+        combo, position, mu_a, mu_b, _ = self.track(state)
+        proposer = self.solution.params.proposer(state.period)
+        dist = self.offers(combo, state.period, position, mu_a, mu_b)[_weak(state, proposer)]
+        return _normalized(state, dist)
+
+    def _choose_response(self, state: BargainingState) -> dict[str, float]:
+        """The responder's acceptance probability at its type."""
+
+        combo, position, mu_a, mu_b, pre = self.track(state)
+        responder = "B" if self.solution.params.proposer(state.period) == "A" else "A"
+        assert state.offer is not None
+        response = self.response(combo, state.period, position, state.offer, pre, mu_a, mu_b)
+        accept = float(response.accept[_weak(state, responder), 0])
+        return {"accept": accept, "reject": 1.0 - accept}
+
+
+class PublicRecord:
+    """The public history's summary: commitments, contest position, beliefs (mu_A, mu_B),
+    the last offer and the beliefs just before it.
+    """
+
+    def __init__(self, prior_a: float, prior_b: float) -> None:
+        self.mu = {"A": prior_a, "B": prior_b}
+        self.committed = {"A": False, "B": False}
+        self.position = 0
+        self.offer: int | None = None
+        self.pre = (prior_a, prior_b)
+
+    @property
+    def combo(self) -> tuple[bool, bool]:
+        """(A committed, B committed)."""
+
+        return self.committed["A"], self.committed["B"]
+
+
+def _weak(state: BargainingState, side: str) -> int:
+    """The row of *side*'s true type in the policy arrays: 1 weak, 0 strong."""
+
+    return 1 if state.types[side] == "weak" else 0
+
+
+def _normalized(state: BargainingState, dist: Array) -> dict[str, float]:
+    """*dist* over the legal actions, renormalized."""
+
+    total = float(dist.sum())
+    return {a: float(dist[j]) / total for j, a in enumerate(state.legal_actions())}
+
+
+# The belief update for each kind of public event, and the choice rule for each phase.
+_UPDATES: dict[str, Callable[[BeliefPolicy, PublicRecord, tuple[Any, ...]], None]] = {
+    "commit": BeliefPolicy._on_commit,
+    "offer": BeliefPolicy._on_offer,
+    "respond": BeliefPolicy._on_respond,
+    "contest": BeliefPolicy._on_contest,
+}
+_CHOICES: dict[str, Callable[[BeliefPolicy, BargainingState], dict[str, float]]] = {
+    "consent": BeliefPolicy._choose_consent,
+    "commit_a": BeliefPolicy._choose_commit_a,
+    "commit_b": BeliefPolicy._choose_commit_b,
+    "propose": BeliefPolicy._choose_offer,
+    "respond": BeliefPolicy._choose_response,
+}
 
 
 __all__ = [

@@ -1,77 +1,172 @@
-"""Reference play for attrition wars that bargain while fighting.
-
-:class:`AttritionBeliefPolicy` is an approximate, belief-based logit policy for
-wars with ``approval``, ``offers``, ``types``, ``mobility`` or ``red_lines``. It
-is not an equilibrium; its exploitability is measured by NashConv on small
-trees. For plain wars it delegates to :class:`AttritionLookaheadPolicy`.
-
-* **Beliefs, one per side.** Each side holds a joint distribution over every
-  type holder (the sides and any sponsors with levels of their own; two kinds or
-  more levels each, so that a side holding out shifts beliefs a little at a
-  time). A side's prior uses nature's distribution for the holders it sees (its
-  own) and their ``belief`` for the rest, which may be mistaken. A sponsor with a
-  ``private`` type has a view of its own: its side's, plus its own type, which
-  its side and the other side hold at its ``belief``. An ``unseen`` type is known
-  to no one: its holder's side starts from its ``own_belief`` and the other side
-  from its ``belief``, and both learn it from the battles. Each joint is
-  updated by Bayes on every public action, using this policy's probabilities
-  for each type of the acting side evaluated under that same joint, and on
-  every battle result (type-dependent odds and holds), so others learn a
-  private type from what its holder does. Effort choices count once the round
-  reveals them. Logit play keeps every action possible, so the
-  update is always defined; at temperature 0 a likelihood floor stands in. A
-  sponsor's belief about the other side is its side's joint conditioned on its
-  own side's types. **Projection:** each side models the others as seeing the
-  world as it does (it does not know that the other side's priors differ), so
-  a mistaken belief can survive until battle or a revealing choice corrects it.
-* **Values.** Without offers, the lookahead's exact random walk of control to
-  the end of the war (with holds and type-dependent costs), averaged over the
-  other side's types. With offers, one round of fighting and then, at the new
-  line of contact, a settlement at the nearest offer on the grid if every party
-  with a say (the two leads and the consent roles) prefers it to fighting on;
-  otherwise the walk from there. Other sponsors are assumed to repeat their
-  last efforts or, in the first round, to play their best response to everyone
-  else at low effort. A direct effort that has not yet deployed counts at the
-  ``deployment`` share in the first round only. A side's lead values withdrawing
-  as its side's defeat; another sponsor values it as the war going on without its
-  effort or costs, while it still collects the outcome (it may free-ride on the
-  lead), less its ``withdraw_cost``. Others are assumed to stay unless quitting
-  beats fighting even as their side's defeat. A sponsor's ``proxy_gain`` counts against its cost in each round
-  of fighting in which another sponsor on its side is assumed direct. Values ignore
-  learning.
-* **Offers.** The proposer weighs each offer's settlement value by the chance
-  that the responder, and then each consent role, accepts. Each accepts by
-  logit on the settlement against its own value of carrying on, computed with
-  the belief from before the offer.
-* **Approval.** The value of the war at the start against the value of refusing.
-* **Warnings.** Honest by construction: a type warns by logit on its gain from
-  going direct once the line is crossed, so warnings carry information and
-  bluffs happen only by noise. A warner that would be bluffing counts the
-  audience cost.
-* **Commitments.** A settlement's value to a committed lead is net of its
-  audience cost when the terms fall short. The settlement expected next round
-  is the offer nearest the line that meets every commitment made (or the
-  nearest offer if none does). A lead commits by logit on its value of
-  carrying on with the commitment made against without it.
-"""
+"""Attrition strategies, from simple lookahead to play with uncertain opponent types."""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, ClassVar
 
-from ..games.protocol import CHANCE, GameState
-from .attrition import (
-    REFUSED,
-    AttritionGame,
-    AttritionLookaheadPolicy,
-    AttritionState,
-    SideTypes,
-    Sponsor,
-    other_side,
-)
-from .common import ConfigError
+from ...games.protocol import CHANCE, GameState
+from ..common import ConfigError
+from .game import AttritionGame, AttritionState
+from .params import REFUSED, AttritionParams, SideTypes, Sponsor, other_side
+
+
+def _plain_only(params: AttritionParams, name: str) -> None:
+    """Raise unless *params* is a plain war (no bargaining-while-fighting blocks)."""
+
+    if params.extended:
+        raise ConfigError(
+            f"{name} plays plain wars only; use AttritionBeliefPolicy for wars with "
+            "approval, offers, types, mobility, red lines or commitments"
+        )
+
+
+class AttritionHeuristicPolicy:
+    """Myopic baseline: best one-round response to the others' last choices.
+
+    The value of control is interpolated linearly between the two victory
+    labels; the role negotiates or withdraws when that settles for more than
+    the interpolated value of continuing.
+    """
+
+    def __init__(self, game: AttritionGame) -> None:
+        _plain_only(game.params, "AttritionHeuristicPolicy")
+        self.params = game.params
+
+    def _value_of_control(self, sponsor: Sponsor, control: float) -> float:
+        """The sponsor's value of *control*, interpolated linearly between the two victories."""
+
+        p = self.params
+        low, high = 1.0 - p.victory_threshold, p.victory_threshold
+        frac = (control - low) / max(high - low, 1e-9)
+        v_a, v_b = sponsor.values["a_victory"], sponsor.values["b_victory"]
+        return v_b + (v_a - v_b) * min(1.0, max(0.0, frac))
+
+    def action_probabilities(self, state: GameState) -> dict[str, float]:
+        """The best one-round response to the others' last choices (earliest on ties)."""
+
+        if not isinstance(state, AttritionState):
+            raise TypeError("AttritionHeuristicPolicy needs an AttritionState")
+        p = self.params
+        role = state.current_player()
+        sponsor = p.sponsor(role)
+        legal = state.legal_actions()
+        assumed = {s.id: state.last_choices.get(s.id, "low") for s in p.sponsors}
+        current_value = self._value_of_control(sponsor, state.control)
+        scores: dict[str, float] = {}
+        for action in legal:
+            if action == "withdraw":
+                label = "a_withdrew" if sponsor.side == "a" else "b_withdrew"
+                scores[action] = sponsor.values[label] - sponsor.withdraw_cost
+                continue
+            if action == "negotiate":
+                scores[action] = sponsor.values["partition"]
+                continue
+            trial = dict(assumed)
+            trial[role] = action
+            p_a = state.win_probability(trial)
+            up = self._value_of_control(sponsor, state.control + p.step)
+            down = self._value_of_control(sponsor, state.control - p.step)
+            expected = p_a * up + (1.0 - p_a) * down
+            level = p.level_index(action)
+            scores[action] = (
+                expected - sponsor.cost_scale * p.costs[level] + state.proxy_gain(role, trial)
+            )
+            if action == "direct":
+                scores[action] -= sponsor.direct_cost
+            if state.weariness[role] + p.weariness[level] >= p.weariness_limit:
+                scores[action] -= abs(current_value)  # avoid being forced out
+        best = max(legal, key=lambda a: (scores[a], -legal.index(a)))
+        return {action: (1.0 if action == best else 0.0) for action in legal}
+
+
+class AttritionLookaheadPolicy:
+    """Baseline that looks ahead to the end of the war.
+
+    For each effort level, with the other sponsors assumed to repeat their last
+    choices, the value of continuing is computed exactly for the random walk of
+    control: victory or defeat at the thresholds, stalemate at the round limit
+    (or the withdrawal value, if that level's weariness would force the sponsor
+    out first), minus the per-round cost of the effort. The role negotiates or
+    withdraws when that settles for more. Unlike the one-round heuristic, a
+    weak starting position does not by itself make settling look better.
+
+    With ``temperature > 0`` the choice is a logit (quantal) response:
+    ``P(action)`` is proportional to ``exp(score / temperature)``.
+    """
+
+    def __init__(self, game: AttritionGame, temperature: float = 0.0) -> None:
+        if temperature < 0.0:
+            raise ConfigError("temperature must be non-negative")
+        _plain_only(game.params, "AttritionLookaheadPolicy")
+        self.params = game.params
+        self.temperature = temperature
+
+    def continuation_value(self, state: AttritionState, role: str, action: str) -> float:
+        """Value of fighting on at *action* while the others repeat their last choices."""
+
+        p = self.params
+        sponsor = p.sponsor(role)
+        level = p.level_index(action)
+        trial = {s.id: state.last_choices.get(s.id, "low") for s in p.sponsors}
+        trial[role] = action
+        p_a = state.win_probability(trial)
+        cost = sponsor.cost_scale * p.costs[level] - state.proxy_gain(role, trial)
+        if action == "direct":
+            cost += sponsor.direct_cost
+        rounds = max(0, p.max_rounds - state.round)
+        end_value = sponsor.values["stalemate"]
+        per_round = p.weariness[level]
+        if per_round > 0.0:
+            room = p.weariness_limit - state.weariness[role]
+            until_out = max(1, math.ceil(room / per_round - 1e-12))
+            if until_out < rounds:
+                rounds = until_out
+                label = "a_withdrew" if sponsor.side == "a" else "b_withdrew"
+                end_value = sponsor.values[label] - sponsor.withdraw_cost
+        low, high = 1.0 - p.victory_threshold, p.victory_threshold
+        cells = max(2, round((high - low) / p.step))
+        values = [end_value] * (cells + 1)
+        values[0], values[cells] = sponsor.values["b_victory"], sponsor.values["a_victory"]
+        for _ in range(rounds):
+            values = [
+                values[0],
+                *(
+                    p_a * values[i + 1] + (1.0 - p_a) * values[i - 1] - cost
+                    for i in range(1, cells)
+                ),
+                values[cells],
+            ]
+        position = min(cells - 1, max(1, round((state.control - low) / p.step)))
+        return values[position]
+
+    def action_probabilities(self, state: GameState) -> dict[str, float]:
+        """The best action by continuation value (earliest on ties), or its logit response."""
+
+        if not isinstance(state, AttritionState):
+            raise TypeError("AttritionLookaheadPolicy needs an AttritionState")
+        p = self.params
+        role = state.current_player()
+        sponsor = p.sponsor(role)
+        legal = state.legal_actions()
+        scores: dict[str, float] = {}
+        for action in legal:
+            if action == "withdraw":
+                label = "a_withdrew" if sponsor.side == "a" else "b_withdrew"
+                scores[action] = sponsor.values[label] - sponsor.withdraw_cost
+            elif action == "negotiate":
+                scores[action] = sponsor.values["partition"]
+            else:
+                scores[action] = self.continuation_value(state, role, action)
+        if self.temperature > 0.0:
+            top = max(scores.values())
+            weights = {a: math.exp((scores[a] - top) / self.temperature) for a in legal}
+            total = sum(weights.values())
+            return {a: w / total for a, w in weights.items()}
+        best = max(legal, key=lambda a: (scores[a], -legal.index(a)))
+        return {action: (1.0 if action == best else 0.0) for action in legal}
+
 
 FLOOR = 0.02  # likelihood floor for exact (temperature 0) play
 CACHE_LIMIT = 400000
@@ -99,7 +194,25 @@ def choose(
 
 
 class AttritionBeliefPolicy:
-    """Approximate reference play for attrition wars with offers or hidden types."""
+    """Approximate reference play for wars with bargaining and hidden types.
+
+    The policy uses logit choices over estimated continuation values; it is not
+    an equilibrium solver. NashConv measures its exploitability on small trees.
+    Plain wars use AttritionLookaheadPolicy.
+
+    Each side keeps a joint distribution: probabilities for combinations of
+    hidden types. Sponsors with private types also have their own beliefs.
+    Battles and public choices update these probabilities by Bayes' rule, using
+    this policy's action probabilities for each possible type of the actor.
+    Each observer assumes that others start from the same beliefs. Mistaken
+    beliefs can therefore persist until a battle or revealing choice changes them.
+
+    Without offers, values follow the front's random walk to the end of the war,
+    averaged over types the role cannot see. With offers, values cover one round
+    of fighting, then a settlement nearest the new front if every required party
+    prefers it to continued fighting. Other sponsors repeat their last efforts.
+    These value estimates do not include the benefit of learning in later rounds.
+    """
 
     def __init__(self, game: AttritionGame, temperature: float = 0.0) -> None:
         if temperature < 0.0:
@@ -138,6 +251,8 @@ class AttritionBeliefPolicy:
 
     # ------------------------------------------------------------- interface
     def action_probabilities(self, state: GameState) -> dict[str, float]:
+        """The mover's choice probabilities under its own kinds and its view's belief."""
+
         if self._plain is not None:
             return self._plain.action_probabilities(state)
         if not isinstance(state, AttritionState):
@@ -158,6 +273,8 @@ class AttritionBeliefPolicy:
         return entry[1][view]
 
     def _view_of(self, role: str) -> str:
+        """The view *role* reasons with: its own if its type is private, else its side's."""
+
         return role if role in self._views else self.params.sponsor(role).side
 
     def public_belief(self, state: AttritionState) -> dict[str, float]:
@@ -185,6 +302,8 @@ class AttritionBeliefPolicy:
         return tuple((h, state.types[h]) for h in self._knows[role] if h in state.types)
 
     def _kinds(self, cell: Cell) -> dict[str, str]:
+        """A joint's cell as ``{holder: kind}``."""
+
         return dict(zip(self._holders, cell, strict=True))
 
     # --------------------------------------------------------------- beliefs
@@ -207,6 +326,10 @@ class AttritionBeliefPolicy:
         return joint
 
     def _track(self, state: AttritionState, history: tuple[str, ...]) -> Entry:
+        """The state and every view's belief after *history*, replayed from the longest
+        prefix already tracked.
+        """
+
         if len(self._tracked) > CACHE_LIMIT:
             self._tracked.clear()
         known = len(history)
@@ -222,6 +345,14 @@ class AttritionBeliefPolicy:
         return entry
 
     def _step(self, entry: Entry, action: str) -> Entry:
+        """One step of belief tracking: Bayes on *action*, then the action itself.
+
+        A battle updates every view by its type-dependent odds. A choice updates them by the
+        policy's probability of it for each combination of kinds the actor sees (floored at
+        temperature 0, where play is otherwise deterministic). Effort choices are simultaneous,
+        so their updates wait until the round reveals them. Type draws are private.
+        """
+
         state, joints, deferred = entry
         joints = dict(joints)
         player = state.current_player()
@@ -263,6 +394,8 @@ class AttritionBeliefPolicy:
         return child, joints, deferred
 
     def _known_holders(self, role: str) -> list[tuple[int, str]]:
+        """The holders *role* observes, with their positions in a cell."""
+
         return [(i, h) for i, h in enumerate(self._holders) if h in self._knows[role]]
 
     def _combos(self, role: str) -> list[Own]:
@@ -277,6 +410,10 @@ class AttritionBeliefPolicy:
 
     @staticmethod
     def _update(joint: Joint, like: Callable[[Cell], float]) -> Joint:
+        """Bayes' rule: the joint reweighted by the likelihood *like* of each cell (unchanged
+        if every cell has likelihood 0).
+        """
+
         new = {cell: q * like(cell) for cell, q in joint.items()}
         total = sum(new.values())
         return {cell: q / total for cell, q in new.items()} if total > 0.0 else joint
@@ -311,6 +448,8 @@ class AttritionBeliefPolicy:
 
     @staticmethod
     def _cell_kinds(own: Own, other: Own) -> dict[str, str]:
+        """The kinds a role knows and the kinds it supposes, as one ``{holder: kind}``."""
+
         return {**dict(own), **dict(other)}
 
     def _own_in(self, kinds: Mapping[str, str], role: str) -> Own:
@@ -321,6 +460,8 @@ class AttritionBeliefPolicy:
     # ---------------------------------------------------------------- values
     @staticmethod
     def _levels(sponsor: Sponsor) -> tuple[str, ...]:
+        """The fighting levels open to *sponsor*."""
+
         return ("low", "high", "direct") if sponsor.direct else ("low", "high")
 
     @staticmethod
@@ -333,6 +474,8 @@ class AttritionBeliefPolicy:
     def _state_key(self, state: AttritionState) -> tuple[Any, ...]:
         # computed once per state and move: the cache holds the state itself, so its id
         # cannot be reused while cached, and a move changes the history's length
+        """The part of *state* that continuation values depend on, cached per state and move."""
+
         moves = len(state.history())
         cached = self._keys.get(id(state))
         if cached is not None and cached[0] is state and cached[1] == moves:
@@ -353,6 +496,8 @@ class AttritionBeliefPolicy:
         return key
 
     def _remember(self, key: Any, compute: Callable[[], Any]) -> Any:
+        """The memoized value of *compute* under *key*."""
+
         if key in self._memo:
             return self._memo[key]
         if len(self._memo) > CACHE_LIMIT:
@@ -498,6 +643,8 @@ class AttritionBeliefPolicy:
         key = ("assumed", self._state_key(state), role, tuple(sorted(kinds.items())))
 
         def compute() -> dict[str, str]:
+            """Estimate each other sponsor's best opening effort against low effort by the rest."""
+
             base = {s.id: "low" for s in p.sponsors}
             result = dict(base)
             for sponsor in p.sponsors:
@@ -599,6 +746,8 @@ class AttritionBeliefPolicy:
         )
 
         def compute() -> float:
+            """Average next-round values over front movements, then subtract this round's net cost."""
+
             p = self.params
             sponsor = p.sponsor(role)
             trial = dict(assumed)
@@ -657,6 +806,8 @@ class AttritionBeliefPolicy:
         trial_key = tuple(sorted(trial.items()))
 
         def fight_on(party: str) -> float:
+            """Value the party's best continued effort or withdrawal at the new front."""
+
             def compute() -> float:
                 if trial.get(party) == "withdraw":  # a withdrawn sponsor does not come back
                     return self._walk(state, party, "withdraw", kinds, trial, control, later=True)
@@ -671,6 +822,8 @@ class AttritionBeliefPolicy:
             return float(self._remember(key, compute))
 
         def settlement() -> float | None:
+            """Return the share nearest the front if every required party prefers it to fighting."""
+
             share = self._line_settlement(state, control)
             parties = [
                 (state.lead(side), 0.0)
@@ -730,37 +883,76 @@ class AttritionBeliefPolicy:
     def _probabilities(
         self, state: AttritionState, role: str, own: Own, joint: Joint
     ) -> dict[str, float]:
+        """The logit response (or best action at temperature 0) to the action values."""
+
         scores = self._scores(state, role, own, joint)
         return choose(scores, state.legal_actions(), self.temperature)
 
     def _scores(self, state: AttritionState, role: str, own: Own, joint: Joint) -> dict[str, float]:
-        p = self.params
-        sponsor = p.sponsor(role)
-        stage = state.stage
-        if stage == "approval":
-            return {
-                "approve": self._carry_on(state, role, own, joint),
-                "refuse": sponsor.values[REFUSED],
-            }
-        if stage == "warn":
-            return {"warn": self._entry_gain(state, role, own, joint), "silent": 0.0}
-        if stage == "commit":
-            pledged = state.clone()
-            assert isinstance(pledged, AttritionState)
-            pledged.committed.add(role)
-            return {
-                "commit": self._carry_on(pledged, role, own, joint),
-                "hold_off": self._carry_on(state, role, own, joint),
-            }
-        if stage == "offer":
-            return self._offer_scores(state, role, own, joint)
-        if stage == "respond":
-            assert p.offers is not None and state.offer is not None
-            return self._respond_scores(state, role, own, joint, p.offers.grid[state.offer])
-        if stage == "ratify":
-            terms = state.terms
-            assert p.offers is not None and terms is not None
-            return self._ratify_scores(state, role, own, joint, terms)
+        """The value to *role* of each legal action at *state*, knowing the kinds *own* and
+        holding the belief *joint*."""
+
+        return self._STAGE_SCORES[state.stage](self, state, role, own, joint)
+
+    def _approval_scores(
+        self, state: AttritionState, role: str, own: Own, joint: Joint
+    ) -> dict[str, float]:
+        """The value of the war at its start against the value of refusing it."""
+
+        return {
+            "approve": self._carry_on(state, role, own, joint),
+            "refuse": self.params.sponsor(role).values[REFUSED],
+        }
+
+    def _warn_scores(
+        self, state: AttritionState, role: str, own: Own, joint: Joint
+    ) -> dict[str, float]:
+        """Warnings are honest by construction: a type warns by its gain from going direct
+        once the line is crossed, so a warning carries information and a bluff happens
+        only by noise."""
+
+        return {"warn": self._entry_gain(state, role, own, joint), "silent": 0.0}
+
+    def _commit_scores(
+        self, state: AttritionState, role: str, own: Own, joint: Joint
+    ) -> dict[str, float]:
+        """The value of carrying on with the commitment made against without it."""
+
+        pledged = state.clone()
+        assert isinstance(pledged, AttritionState)
+        pledged.committed.add(role)
+        return {
+            "commit": self._carry_on(pledged, role, own, joint),
+            "hold_off": self._carry_on(state, role, own, joint),
+        }
+
+    def _response_scores(
+        self, state: AttritionState, role: str, own: Own, joint: Joint
+    ) -> dict[str, float]:
+        """The responder's values at the offer on the table."""
+
+        offers = self.params.offers
+        assert offers is not None and state.offer is not None
+        return self._respond_scores(state, role, own, joint, offers.grid[state.offer])
+
+    def _ratification_scores(
+        self, state: AttritionState, role: str, own: Own, joint: Joint
+    ) -> dict[str, float]:
+        """A consent role's values at the accepted offer."""
+
+        terms = state.terms
+        assert self.params.offers is not None and terms is not None
+        return self._ratify_scores(state, role, own, joint, terms)
+
+    def _effort_scores(
+        self, state: AttritionState, role: str, own: Own, joint: Joint
+    ) -> dict[str, float]:
+        """The value of each effort level, of withdrawing, and of settling at the line.
+
+        A warner whose line is crossed counts its audience cost against every action but
+        going direct.
+        """
+
         fight = self._fight(state, role, own, joint)
         scores: dict[str, float] = {}
         for action in state.legal_actions():
@@ -768,7 +960,7 @@ class AttritionBeliefPolicy:
                 scores[action] = self._settle_value(state, role, state.control)
             else:
                 scores[action] = fight[action]
-        line = p.red_line(role)
+        line = self.params.red_line(role)
         if (
             line is not None
             and role in state.warned
@@ -792,6 +984,10 @@ class AttritionBeliefPolicy:
     def _offer_scores(
         self, state: AttritionState, role: str, own: Own, joint: Joint
     ) -> dict[str, float]:
+        """The proposer's value of each offer: its settlement value weighted by the chance
+        that the responder and then each consent role accepts, else the value of carrying on.
+        """
+
         p = self.params
         offers = p.offers
         assert offers is not None
@@ -811,6 +1007,8 @@ class AttritionBeliefPolicy:
     def _deal_probability(
         self, state: AttritionState, share: float, kinds: Mapping[str, str], joint: Joint
     ) -> float:
+        """P(an offer at *share* is accepted and ratified), under the kinds *kinds*."""
+
         responder = state.responder()
         assert responder is not None
         scores = self._respond_scores(
@@ -822,6 +1020,8 @@ class AttritionBeliefPolicy:
     def _ratify_probability(
         self, state: AttritionState, share: float, kinds: Mapping[str, str], joint: Joint
     ) -> float:
+        """P(every consent role still in the war ratifies *share*), under the kinds *kinds*."""
+
         offers = self.params.offers
         assert offers is not None
         result = 1.0
@@ -836,6 +1036,8 @@ class AttritionBeliefPolicy:
     def _respond_scores(
         self, state: AttritionState, role: str, own: Own, joint: Joint, share: float
     ) -> dict[str, float]:
+        """The responder's values of accepting *share* (it may still be vetoed) and of rejecting."""
+
         carry = self._carry_on(state, role, own, joint)
         ratified = 0.0
         for other, q in self._about_other(joint, role, own).items():
@@ -847,8 +1049,20 @@ class AttritionBeliefPolicy:
     def _ratify_scores(
         self, state: AttritionState, role: str, own: Own, joint: Joint, share: float
     ) -> dict[str, float]:
+        """A consent role's value of the partition at *share* against carrying on at its veto cost."""
+
         offers = self.params.offers
         assert offers is not None
         sponsor = self.params.sponsor(role)
         veto = self._carry_on(state, role, own, joint) - offers.consent_of(role).veto_cost
         return {"ratify": sponsor.partition_value(share), "veto": veto}
+
+    _STAGE_SCORES: ClassVar[dict[str, Callable[..., dict[str, float]]]] = {
+        "approval": _approval_scores,
+        "warn": _warn_scores,
+        "commit": _commit_scores,
+        "offer": _offer_scores,
+        "respond": _response_scores,
+        "ratify": _ratification_scores,
+        "effort": _effort_scores,
+    }

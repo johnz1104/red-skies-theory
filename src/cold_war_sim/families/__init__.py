@@ -24,6 +24,8 @@ FAMILIES: dict[str, Builder] = {
 
 
 def build_family(family: str, config: Mapping[str, Any]) -> Any:
+    """The game of *family* built from *config*."""
+
     try:
         builder = FAMILIES[family]
     except KeyError as exc:
