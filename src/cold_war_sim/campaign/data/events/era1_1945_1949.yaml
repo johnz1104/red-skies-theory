@@ -190,8 +190,8 @@ events:
   - id: ccp_defeated
     kind: cutscene
     title: The Communists defeated
-    # no window: the war's outcome is the condition, and the Nationalists' derived values
-    # read this handover wherever their victory is valued (E40)
+    # no window: the war's outcome is the condition, and the Nationalists' derived values read
+    # this handover wherever their victory is valued
     priority: 10
     when: {outcome: {event: chinese_civil_war, in: [b_victory, a_withdrew]}}
     narrative: The Nationalist government prevails; the Communist movement is broken and the Nationalists take China's seat.
@@ -214,14 +214,14 @@ events:
     effects:
       - flag: [prc_founded, china_divided]
       - status: {power: PRC, to: active}
-      # The Nationalists survive in the south as a US client and a standing threat to
-      # the Communist regime (review of 2026-10-10; EXPERIMENTS.md E17). The influence each
-      # side keeps follows the line, in the war's own outcomes (E40)
+      # The Nationalists survive in the south as a US client and a standing threat to the
+      # Communist regime. The influence each side keeps follows the line, in the
+      # war's own outcomes
       - add: {path: powers.PRC.stability, value: -0.1}
 
-  # Korea's occupation and the road to war (review of 2026-10-11/12; EXPERIMENTS.md E28).
-  # Both occupiers leave once the two states exist; the US withdrawal is a decision, and once
-  # both have gone the Korean War can start, if Stalin approves.
+  # Korea's occupation and the road to war. Both occupiers leave once the two states
+  # exist; the US withdrawal is a decision, and once both have gone the Korean War can start, if
+  # Stalin approves.
   - id: korean_states_founded
     kind: cutscene
     title: Two Korean states
@@ -273,10 +273,10 @@ events:
     title: The Sino-Soviet treaty
     window: {earliest: 1949-Q4, latest: 1951-Q4}
     historical_date: 1950-Q1
-    # Only after a full Communist victory (user decision 2026-10-11; EXPERIMENTS.md E25): the 1950
-    # treaty followed the PRC's control of the mainland. Stalin kept ties with the Nationalist
-    # government until 1949 (his ambassador followed it to Canton) and gave partitioned states
-    # (North Korea, East Germany) aid but no formal alliance in his lifetime.
+    # Only after a full Communist victory: the 1950 treaty followed the PRC's control of the
+    # mainland. Stalin kept ties with the Nationalist government until 1949 (his ambassador
+    # followed it to Canton) and gave partitioned states (North Korea, East Germany) aid but no
+    # formal alliance in his lifetime.
     when:
       all:
         - flag: prc_founded
@@ -292,9 +292,8 @@ events:
       # bases, joint companies in Xinjiang
       - shift_influence: {region: china_mainland, toward: USSR, amount: 0.1}
 
-  # Delayed, risky payoffs (user decisions 2026-10-11; EXPERIMENTS.md E25). Derived payoffs
-  # count them through the lookahead in goals.yaml, so an offer of aid is an investment that
-  # may or may not pay off. Effect sizes are placeholders.
+  # Delayed, risky payoffs. Derived payoffs count them through the lookahead in goals.yaml, so an
+  # offer of aid is an investment that may or may not pay off. Effect sizes are placeholders.
   - id: european_recovery
     kind: cutscene
     title: European recovery
@@ -349,7 +348,7 @@ events:
     excludes: [european_recovery]
     # What planners feared if aid failed: communist governments in Paris or Rome. Same triggers
     # as stagnation (the plan unfunded or derailed, Western Europe unstable), read from the
-    # Marshall outcome so the follow-on valuation sees the risk (user decision 2026-10-11; E26).
+    # Marshall outcome so the follow-on valuation sees the risk.
     when:
       all:
         - fired: marshall_plan
@@ -482,11 +481,11 @@ events:
       partition: {narrative: "Greece is divided by a negotiated line.", effects: [{flag: greece_divided}, {unflag: greece_unstable}]}
       stalemate: {narrative: "The insurgency smoulders on unresolved.", effects: [{flag: greece_divided}]}
 
-  # Re-reviewed 2026-10-14 under the five-point standard (EXPERIMENTS.md E40): a war of
-  # attrition that bargains while fighting, between the Communists (the PRC agent) and
-  # Chiang's Nationalists (computer-run), with Moscow and Washington as backers. Sources:
-  # Westad, Decisive Encounters (2003); Pepper, Civil War in China (1978); Tanner, The Battle
-  # for Manchuria (2013); Tsou, America's Failure in China (1963). Sizes are placeholders.
+  # A war of attrition with bargaining while fighting,
+  # between the Communists (the PRC agent) and Chiang's Nationalists (computer-run), with Moscow
+  # and Washington as backers. Sources: Westad, Decisive Encounters (2003); Pepper, Civil War in
+  # China (1978); Tanner, The Battle for Manchuria (2013); Tsou, America's Failure in China
+  # (1963). Sizes are placeholders.
   - id: chinese_civil_war
     kind: major
     title: The Chinese Civil War
@@ -496,9 +495,9 @@ events:
       family: attrition
       tier: 1
       payoffs: derived
-      # The Nationalists value outcomes by their own goal row (user decision 2026-10-14,
-      # E40): by the share of China they would govern, priced at their goal score ruling
-      # all of it after a victory. A stalemate leaves the even split its effects encode
+      # The Nationalists value outcomes by their own goal row: by the share of China they would
+      # govern, priced at their goal score ruling all of it after a victory. A stalemate leaves
+      # the even split its effects encode
       identities: {KMT: {identity: ROC, stalemate_share: 0.5}}
       cadence: quarterly
       region: china_mainland
@@ -506,28 +505,28 @@ events:
         sponsors:
           PRC: {side: a, capacity: 1.2, direct: true, values: {a_victory: 5.0, b_victory: -5.0, partition: 1.0, a_withdrew: -5.0, b_withdrew: 5.0, stalemate: 0.5}}
           USSR: {side: a, capacity: 0.4, values: {a_victory: 1.5, b_victory: -1.0, partition: 0.5, a_withdrew: -1.0, b_withdrew: 1.5, stalemate: 0.2}}
-          # Chiang's Nationalists (computer-run; user decision 2026-10-14). They decided
-          # whether to fight or settle. Chiang's aim was to eliminate the Communists ("a
-          # disease of the heart", the Japanese only "of the skin"); a Communist army and
-          # state in the north were unacceptable, and he broke the 1946 truces. Their values
-          # are derived (model.identities); the hand values below are the earlier
-          # placeholders, kept for comparison. The army is local strength B
+          # Chiang's Nationalists (computer-run). They decided whether to fight or settle.
+          # Chiang's aim was to eliminate the Communists ("a disease of the heart", the Japanese
+          # only "of the skin"); a Communist army and state in the north were unacceptable, and
+          # he broke the 1946 truces. Their values are derived (model.identities); the hand
+          # values below are the earlier placeholders, kept for comparison. The army is local
+          # strength B
           KMT: {side: b, capacity: 0.0, cost_scale: 0.2, values: {a_victory: -5.0, b_victory: 3.0, partition: 0.0, a_withdrew: 3.0, b_withdrew: -5.0, stalemate: -0.5}, settlement: {base: -7.0, per_share: 10.0}}
-          # Washington backs the Nationalists with aid. Truman ruled out sending troops: the
-          # army had demobilized, Europe came first, and Marshall told Congress (February
-          # 1948) that saving Chiang would be "an enormous commitment for an indefinite
-          # time". Intervention stays possible at a heavy price per quarter (user decision
-          # 2026-10-14, E40; sized so it is rare: 9% of 1946 runs with the historical types)
+          # Washington backs the Nationalists with aid. Truman ruled out sending troops: the army
+          # had demobilized, Europe came first, and Marshall told Congress (February 1948) that
+          # saving Chiang would be "an enormous commitment for an indefinite time". Intervention
+          # stays possible at a heavy price per quarter (sized so it is rare: 9% of 1946 runs
+          # with the historical types)
           USA: {side: b, capacity: 0.8, direct: true, direct_cost: 0.75, values: {a_victory: -2.0, b_victory: 2.0, partition: 0.3, a_withdrew: 2.0, b_withdrew: -1.5, stalemate: 0.0}}
         leads: {a: PRC, b: KMT}
         # The Nationalists were the stronger side in 1946: about 4.3 million troops, with US
         # equipment and an air force, against 1.2-1.3 million Communists (Westad). Local
         # strength B is bound to the Nationalists' economy below
         local_strength: {a: 1.0, b: 6.5}
-        # Battles follow Lanchester's square law (1916; user decision 2026-10-14, E40): with
-        # aimed fire, strength grows with the square of numbers, so unequal forces decide
-        # battles. The war moved from mobile warfare (1946-47) to massed campaigns
-        # (Liaoshen, Huaihai, Pingjin, 1948-49), which the Nationalists all lost
+        # Battles follow Lanchester's square law (1916): with aimed fire, strength grows with the
+        # square of numbers, so unequal forces decide battles. The war moved from mobile warfare
+        # (1946-47) to massed campaigns (Liaoshen, Huaihai, Pingjin, 1948-49), which the
+        # Nationalists all lost
         gamma: 2.0
         initial_control: 0.35
         step: 0.05
@@ -535,24 +534,24 @@ events:
         max_rounds: 28
         weariness: {high: 0.0, direct: 0.0}
         # The balance turned through defeats and defections: about 1.8 million Nationalist
-        # soldiers joined the PLA, which grew to about 4 million by 1949 while the
-        # Nationalists fell to about 1.5 million (user decision 2026-10-14; placeholder)
+        # soldiers joined the PLA, which grew to about 4 million by 1949 while the Nationalists
+        # fell to about 1.5 million (placeholder)
         momentum: 0.04
-        # Talks while fighting (user decision 2026-10-14): Marshall's mediation ran through
-        # 1946; the Communists' eight points (January 1949) and Li Zongren's Yangtze bid (the
-        # Beiping talks, April 1949) failed. A settlement is a line: the Communist share
+        # Talks while fighting: Marshall's mediation ran through 1946; the Communists' eight
+        # points (January 1949) and Li Zongren's Yangtze bid (the Beiping talks, April 1949)
+        # failed. A settlement is a line: the Communist share
         offers:
           grid: [0.3, 0.4, 0.5, 0.6, 0.7]
           proposer: alternate
           opens: 0
-        # Hidden strength and cohesion, with each side's own beliefs (user decisions
-        # 2026-10-14). Chiang underrated the Communists ("bandits"; Chen Cheng promised
-        # victory in three to six months). The Nationalist armies proved brittle, which no
-        # one could see in 1946: Chiang believed them solid; Mao was sure they would crumble
-        # ("all reactionaries are paper tigers", to Anna Louise Strong, August 1946), though
-        # slowly (about five years from July 1946 by his September 1948 estimate; the pace
-        # is set by the strengths and momentum). Cohesion is seen by no side and learned
-        # from the battles (unseen; own_belief is the Nationalists' prior)
+        # Hidden strength and cohesion, with each side's own beliefs. Chiang underrated the
+        # Communists ("bandits"; Chen Cheng promised victory in three to six months). The
+        # Nationalist armies proved brittle, which no one could see in 1946: Chiang believed them
+        # solid; Mao was sure they would crumble ("all reactionaries are paper tigers", to Anna
+        # Louise Strong, August 1946), though slowly (about five years from July 1946 by his
+        # September 1948 estimate; the pace is set by the strengths and momentum). Cohesion is
+        # seen by no side and learned from the battles (unseen; own_belief is the Nationalists'
+        # prior)
         types:
           a:
             levels:
@@ -591,14 +590,14 @@ events:
       b_withdrew: {narrative: "The Nationalist armies disintegrate; the government flees to Taiwan.", effects: [{flag: ccp_victory}]}
       b_victory: {narrative: "The Nationalists crush the Communist armies.", effects: [{flag: kmt_victory}]}
       a_withdrew: {narrative: "The Communist movement abandons the armed struggle.", effects: [{flag: kmt_victory}]}
-      # The line sets each side's hold on the mainland (user decision 2026-10-14): at an even
-      # split, as before, Communist +0.2 and the US-backed south +0.25
+      # The line sets each side's hold on the mainland: at an even split, as before, Communist
+      # +0.2 and the US-backed south +0.25
       partition: {narrative: "A truce divides China along the line of contact.", effects: [{flag: china_truce}, {shift_influence: {region: china_mainland, toward: PRC, amount: 0.4, scale_by: share}}, {shift_influence: {region: china_mainland, toward: USA, amount: 0.5, scale_by: {metric: share, invert: true}}}]}
       stalemate: {narrative: "The civil war ends in exhaustion and division.", effects: [{flag: china_truce}, {shift_influence: {region: china_mainland, toward: PRC, amount: 0.2}}, {shift_influence: {region: china_mainland, toward: USA, amount: 0.25}}]}
     tags:
-      # Abandoning an ally in its war (user decision 2026-10-14, E40; placeholder size, as in
-      # Korea): Washington kept aiding the Nationalists to the end (the China Aid Act, April
-      # 1948), pressed by the China lobby in Congress
+      # Abandoning an ally in its war (placeholder size, as in Korea): Washington kept aiding the
+      # Nationalists to the end (the China Aid Act, April 1948), pressed by the China lobby in
+      # Congress
       "USA:withdrew": {effects: [{add: {path: powers.USA.credibility, value: -0.1}}]}
 
   - id: indochina_war
@@ -644,12 +643,11 @@ events:
     historical_date: 1947-Q2
     when: {compare: {path: regions.western_europe.stability, op: lt, value: 0.65}}
     narrative: Secretary Marshall offers American aid for European recovery.
-    # Reviewed 2026-10-10 (EXPERIMENTS.md E19); clients split 2026-10-11 (E21). Aid's effects in
-    # the world scale with the US offer level (metric commit:USA: none 0, aid 0.5, aid_guarantee
-    # 1): recipients' growth and stability. The plan (~$13.3B in 1948-51, about 5% of one year's
-    # US GDP) was a one-off transfer of wealth, not a permanent cut in output, so it is not an
-    # economy-level effect. Its cost to the US lives in the offer cost until the game has a
-    # stock of wealth or debt (GOALS.md section 15).
+    # Clients choose separately. Aid's effects scale with the US offer level (metric
+    # commit:USA: none 0, aid 0.5, aid_guarantee 1): recipients' growth and stability. The plan
+    # (~$13.3B in 1948-51, about 5% of one year's US GDP) was a one-off transfer of wealth, not a
+    # permanent cut in output, so it is not an economy-level effect. Its cost to the US lives in
+    # the offer cost until the game has a stock of wealth or debt.
     model:
       family: alignment
       tier: 1
@@ -671,13 +669,13 @@ events:
             offer_cost: {none: 0.0, aid: 0.1, aid_guarantee: 0.2}
             gain: {EAST: 1.5, CZE: 0.6, FRA: 0.8, ITA: 1.0, WSMALL: 0.5}
             loss: {UK: 0.2, FRA: 0.6, ITA: 0.5, WSMALL: 0.3, CZE: 0.5, EAST: 1.0}
-            # Stalin can forbid the countries he controls to take American aid (as on
-            # 9 July 1947). A client that defies the order loses this from aligning with the US.
-            # The East (Soviet troops): 2.0, more than the full US offer (1.2), so defiance is
-            # about 1 in 100. Czechoslovakia: 1.2 (user decision 2026-10-11), because Prague had
-            # no Soviet troops and Yugoslavia defied Stalin a year later: about 1 in 7 defies when
-            # the US offers aid. The cost of forbidding is derived from the "USSR:forbade" tag
-            # and its follow-ons (Eastern stagnation); 0.1 is the fallback.
+            # Stalin can forbid the countries he controls to take American aid (as on 9 July
+            # 1947). A client that defies the order loses this from aligning with the US. The
+            # East (Soviet troops): 2.0, more than the full US offer (1.2), so defiance is about
+            # 1 in 100. Czechoslovakia: 1.2, because Prague had no Soviet troops and Yugoslavia
+            # defied Stalin a year later: about 1 in 7 defies when the US offers aid. The cost of
+            # forbidding is derived from the "USSR:forbade" tag and its follow-ons (Eastern
+            # stagnation); 0.1 is the fallback.
             control: {CZE: 1.2, EAST: 2.0}
             forbid_cost: 0.1
         # Computer-run clients choose by a logit over pull + offer value (temperature 0.4).
@@ -724,10 +722,10 @@ events:
           - shift_influence: {region: germany, toward: USA, amount: 0.05}
           - add: {path: powers.UK.growth, value: 0.005, scale_by: "commit:USA"}
           - add: {path: regions.western_europe.stability, value: 0.15, scale_by: "commit:USA"}
-      # Switching blocs costs relations with the US like the Berlin clash between the
-      # superpowers (-0.4); staying out of both costs what a veto does in Berlin (-0.1).
-      # Without these, Britain's derived pull toward the US was only +0.24 and a Soviet aid
-      # offer (0.3) could outweigh it (EXPERIMENTS.md E24).
+      # Switching blocs costs relations with the US like the Berlin clash between the superpowers
+      # (-0.4); staying out of both costs what a veto does in Berlin (-0.1). Without these,
+      # Britain's derived pull toward the US was only +0.24 and a Soviet aid offer (0.3) could
+      # outweigh it.
       aligned_USSR:
         narrative: Britain turns away from American aid and toward Moscow.
         effects:
@@ -782,8 +780,8 @@ events:
       "EAST:aligned_USSR": {effects: [{flag: molotov_plan}, {shift_influence: {region: eastern_europe, toward: USSR, amount: 0.08}}]}
       # Forbidding: the East forgoes Western aid (slower recovery, resentment). The order was
       # private (Prague and Warsaw were told in Moscow), so it carries no US-relations cost of
-      # its own: the public break is in the Czechoslovak coup and the Cominform, which have
-      # their own effects (user decision 2026-10-11; EXPERIMENTS.md E23).
+      # its own: the public break is in the Czechoslovak coup and the Cominform, which have their
+      # own effects.
       "USSR:forbade":
         effects:
           - flag: eastern_participation_forbidden
@@ -833,16 +831,17 @@ events:
       all:
         - flag: [western_zones_merged, berlin_four_power]
     narrative: The Soviet Union blockades the western sectors of Berlin; the airlift begins.
-    # Reviewed 2026-10-11 (EXPERIMENTS.md E20-E21). A hold-out: reviewed, never tuned to history.
-    # Bargaining while fighting, with hidden resolve on both sides. Each quarter the West names
-    # terms (share = the West's share: 1 keeps Berlin and the West German programme) and the
-    # USSR keeps the blockade or lifts it on them: the West bargains, the USSR endures. Between
-    # quarters the airlift and the blockade contest the city's supply. The contest is public
-    # (tonnage was reported daily) but random: nobody knew whether the airlift would last the
-    # winter. Each side's per-quarter cost of carrying on is private: the West's airlift cost and
-    # political risk (the November 1948 election, British austerity); Stalin's cost of the
-    # blockade and of the Western counter-blockade. The West did not know Stalin's aims or
-    # resolve (Shlaim 1983; Harrington 2012); Stalin expected the West to give way (Narinsky 1996).
+    # A hold-out event: its historical choices are not used to tune goals. Bargaining continues
+    # during the blockade, with
+    # hidden resolve on both sides. Each quarter the West names terms (share = the West's share:
+    # 1 keeps Berlin and the West German programme) and the USSR keeps the blockade or lifts it
+    # on them: the West bargains, the USSR endures. Between quarters the airlift and the blockade
+    # contest the city's supply. The contest is public (tonnage was reported daily) but random:
+    # nobody knew whether the airlift would last the winter. Each side's per-quarter cost of
+    # carrying on is private: the West's airlift cost and political risk (the November 1948
+    # election, British austerity); Stalin's cost of the blockade and of the Western
+    # counter-blockade. The West did not know Stalin's aims or resolve (Shlaim 1983; Harrington
+    # 2012); Stalin expected the West to give way (Narinsky 1996).
     model:
       family: bargaining
       tier: 1
@@ -864,8 +863,8 @@ events:
         consent:
           - {role: UK, base: -0.2, per_share: 1.0, veto_value: 0.0}
           - {role: FRA, base: -0.3, per_share: 1.0, veto_value: 0.0}
-        # PLACEHOLDERS, swept in E21: priors 0.5 (maximal uncertainty, not fitted); per-quarter
-        # costs spread around the old common values (US 0.08, USSR 0.10).
+        # Placeholder priors of 0.5 express maximal uncertainty and are not fitted; per-quarter costs
+        # spread around the old common values (US 0.08, USSR 0.10).
         types:
           A: {prior: {strong: 0.5, weak: 0.5}, delay_cost: {strong: 0.04, weak: 0.16}}
           B: {prior: {strong: 0.5, weak: 0.5}, delay_cost: {strong: 0.05, weak: 0.20}}

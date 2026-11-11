@@ -138,7 +138,7 @@ events:
         - no_flag: [korea_peace_treaty, us_troops_korea, korean_war, kim_asks]
     # In April 1975, days after Phnom Penh fell and as Saigon was falling, Kim went to Beijing
     # and spoke of liberating the South; Mao and Deng turned him down. Here he asks only if US
-    # troops have left the South (E31).
+    # troops have left the South.
     narrative: "After the fall of Saigon, Kim Il-sung asks his patrons to back a war to unify Korea."
     effects: [{flag: kim_asks}]
 
@@ -483,19 +483,19 @@ events:
     window: {earliest: 1979-Q4, latest: 1985-Q4}
     historical_date: 1980-Q1
     when: {outcome: {event: afghanistan_decision, in: [quagmire]}}
-    # Light review (2026-10-26, EXPERIMENTS.md E48; Kalinovsky, A Long Goodbye, 2011; Coll,
-    # Ghost Wars, 2004; Cordovez and Harrison, Out of Afghanistan, 1995; Braithwaite,
-    # Afgantsy, 2011). Mechanism: asymmetric counterinsurgency (Mack, World Politics 27,
-    # 1975): the resistance's stake was near-indivisible, Moscow's a client's survival.
+    # Historical sources (Kalinovsky, A Long Goodbye, 2011; Coll, Ghost Wars, 2004; Cordovez and
+    # Harrison, Out of Afghanistan, 1995; Braithwaite, Afgantsy, 2011). Mechanism: asymmetric
+    # counterinsurgency (Mack, World Politics 27, 1975): the resistance's stake was
+    # near-indivisible, Moscow's a client's survival.
     # - The mujahideen lead side b (computer-run, hand values: judgment), armed by the US,
     #   China and Britain (through Pakistan); the 40th Army fights directly for Kabul.
-    # - Moscow expected a short operation (Brezhnev's "three or four weeks"): its prior that
-    #   the resistance can be bent. Its own cost of staying rises with its leader's
-    #   reformism (bound), so Gorbachev's arrival re-binds the war: the Politburo decided in
-    #   November 1986 to leave within two years.
+    # - Moscow expected a short operation (Brezhnev's "three or four weeks"): its prior that the
+    # resistance can be bent. Its own cost of staying rises with its leader's reformism (bound),
+    # so Gorbachev's arrival re-binds the war: the Politburo decided in November 1986 to leave
+    # within two years.
     # - The Geneva talks (1982-88) negotiated the terms of a Soviet withdrawal, not a line of
     #   partition, so they are the withdraw choice rather than offers.
-    # - The domestic cost of casualties (E48) applies, at an autocracy's sensitivity.
+    # - The domestic cost of casualties applies, at an autocracy's sensitivity.
     model:
       family: attrition
       tier: 1
@@ -624,11 +624,11 @@ events:
         - compare: {path: tension, op: ge, value: 0.3}
         - leader: {power: USSR, in: [andropov, chernenko, soviet_hardliner, brezhnev]}
     narrative: "Amid the Pershing deployment, a Soviet early-warning false alarm and NATO's Able Archer exercise meet a Kremlin braced for a surprise attack."
-    # Light review (2026-10-26, EXPERIMENTS.md E48; Barrass, Able Archer 83 and the
-    # Soviet War Scare, 2016; Jones, Able Archer 83, 2016; Hoffman, The Dead Hand, 2009;
-    # President's Foreign Intelligence Advisory Board, The Soviet "War Scare", 1990; Andrew
-    # and Gordievsky, KGB, 1990). Mechanism: a misperception spiral (Jervis, Perception and
-    # Misperception, 1976) in which officers below the leaders decide at incidents.
+    # Historical sources (Barrass, Able Archer 83 and the Soviet War Scare, 2016; Jones, Able Archer
+    # 83, 2016; Hoffman, The Dead Hand, 2009; President's Foreign Intelligence Advisory Board,
+    # The Soviet "War Scare", 1990; Andrew and Gordievsky, KGB, 1990). Mechanism: a misperception
+    # spiral (Jervis, Perception and Misperception, 1976) in which officers below the leaders
+    # decide at incidents.
     # - From 1981 the KGB's Operation RYaN searched for signs of a US surprise attack;
     #   Andropov thought one possible. Moscow's own prior that Washington meant to strike
     #   (nature's: almost never), bound to tension: 0.3 at the replay's world (0.56).
@@ -652,7 +652,7 @@ events:
           USA: {side: a, values: {a_prevails: 0.3, b_prevails: 0.0, compromise: 0.1, limited_war: -10, nuclear_war: -60}, escalation_cost: 0.05}
           UK: {side: a, values: {a_prevails: 0.2, b_prevails: 0.0, compromise: 0.1, limited_war: -10, nuclear_war: -60}}
           USSR: {side: b, values: {a_prevails: -0.5, b_prevails: 0.3, compromise: 0.1, limited_war: -10, nuclear_war: -60}, escalation_cost: 0.05}
-          # officers: the Oko duty officer and NATO's intelligence chief (E48)
+          # officers: the Oko duty officer and NATO's intelligence chief
           OKO: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
           USAFE: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
         script:

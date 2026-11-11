@@ -61,7 +61,6 @@ events:
     effects: [{leader: kennedy}]
 
   # ------------------------------------------------------- Korea after the war
-  # (user decisions 2026-10-12; EXPERIMENTS.md E31)
   - id: us_korea_troops
     kind: decision
     title: American troops in Korea after the armistice
@@ -86,21 +85,20 @@ events:
         narrative: "The United States withdraws its troops from South Korea."
         effects: [{unflag: us_troops_korea}, {flag: us_left_korea}, {add: {path: powers.USA.conventional, value: 0.1}}, {add: {path: powers.USA.credibility, value: -0.05}}]
 
-  # The armistice (Article IV) called for a political conference within three months. It met
-  # at Geneva from 26 April to 15 June 1954 and failed. The issue was indivisible: Washington
-  # and Seoul wanted UN-supervised elections across Korea, where the South held about two
-  # thirds of the people; the Communists wanted foreign troops out first and neutral
-  # supervision. An agreement here is all-Korea elections: the share is the agreed chance
-  # that Seoul wins them (the supervision terms), and the result is a lottery between
-  # unification under Seoul and under Kim, with foreign troops leaving. With a Communist China
-  # in the war, Beijing loses its buffer if Seoul wins, so no terms suit both sides and the
-  # armistice stays without a treaty, the canonical outcome. Without one, Moscow negotiates
-  # (geneva_korea_soviet) and might accept even odds, as it accepted Austria's neutrality.
-  # In both, the two Korean governments must ratify, and neither accepts an election it might
-  # lose (E39), so election unification is effectively closed in this window.
-  # Losing Korea at the polls costs Washington credibility, less than a lost war (-0.1
-  # against -0.15; placeholder): the US backed the cancellation of Vietnam's 1956 elections
-  # because Ho Chi Minh would have won them. Winning gains as much.
+  # The armistice (Article IV) called for a political conference within three months. It met at
+  # Geneva from 26 April to 15 June 1954 and failed. The issue was indivisible: Washington and
+  # Seoul wanted UN-supervised elections across Korea, where the South held about two thirds of
+  # the people; the Communists wanted foreign troops out first and neutral supervision. An
+  # agreement here is all-Korea elections: the share is the agreed chance that Seoul wins them
+  # (the supervision terms), and the result is a lottery between unification under Seoul and
+  # under Kim, with foreign troops leaving. With a Communist China in the war, Beijing loses its
+  # buffer if Seoul wins, so no terms suit both sides and the armistice stays without a treaty,
+  # the canonical outcome. Without one, Moscow negotiates (geneva_korea_soviet) and might accept
+  # even odds, as it accepted Austria's neutrality. In both, the two Korean governments must
+  # ratify, and neither accepts an election it might lose, so election unification is effectively
+  # closed in this window. Losing Korea at the polls costs Washington credibility, less than a
+  # lost war (-0.1 against -0.15; placeholder): the US backed the cancellation of Vietnam's 1956
+  # elections because Ho Chi Minh would have won them. Winning gains as much.
   - id: geneva_korea
     kind: major
     title: The Geneva Conference on Korea
@@ -123,7 +121,7 @@ events:
       config:
         roles: {A: USA, B: PRC}
         grid: [0.4, 0.5, 0.6, 0.67]  # the chance that Seoul wins all-Korea elections
-        horizon: 1  # one session: the Korean phase ran 26 April to 15 June 1954 (E33)
+        horizon: 1  # one session: the Korean phase ran 26 April to 15 June 1954
         first_proposer: A
         # outcome values are hand-set fallbacks; derived payoffs replace them
         sides:
@@ -133,14 +131,13 @@ events:
         consent:
           - {role: USSR}
           - {role: UK}
-          # the two Korean governments ratify too (user decision 2026-10-13, E39): each
-          # faced its end if it lost, and would accept only elections it was sure to win.
-          # Rhee refused to sign the armistice and freed about 27,000 prisoners to wreck it
-          # (18 June 1953); Seoul's 14 points (22 May 1954) asked UN-supervised elections by
-          # population; Nam Il's plan (27 April 1954) gave the North an equal-seat commission.
-          # Hand values mirror Kim's in the war (unification +3, the regime's end -5), over
-          # the chance that Seoul wins: Seoul ratifies at 0.625 or more, Pyongyang at 0.375
-          # or less, so no terms pass both and the armistice stays
+          # the two Korean governments ratify too: each faced its end if it lost, and would
+          # accept only elections it was sure to win. Rhee refused to sign the armistice and
+          # freed about 27,000 prisoners to wreck it (18 June 1953); Seoul's 14 points (22 May
+          # 1954) asked UN-supervised elections by population; Nam Il's plan (27 April 1954) gave
+          # the North an equal-seat commission. Hand values mirror Kim's in the war (unification
+          # +3, the regime's end -5), over the chance that Seoul wins: Seoul ratifies at 0.625 or
+          # more, Pyongyang at 0.375 or less, so no terms pass both and the armistice stays
           - &rok_consent {role: ROK, base: -5.0, per_share: 8.0, veto_value: 0.0}
           - &dprk_consent {role: DPRK, base: 3.0, per_share: -8.0, veto_value: 0.0}
       historical:
@@ -175,7 +172,7 @@ events:
       config:
         roles: {A: USA, B: USSR}
         grid: [0.4, 0.5, 0.6, 0.67]
-        horizon: 1  # one session: the Korean phase ran 26 April to 15 June 1954 (E33)
+        horizon: 1  # one session: the Korean phase ran 26 April to 15 June 1954
         first_proposer: A
         sides:
           A: {discount: 0.95, breakdown_value: 0.0, impasse_value: 0.0}
@@ -592,11 +589,10 @@ events:
     window: {earliest: 1956-Q4, latest: 1957-Q4}
     historical_date: 1956-Q4
     when: {flag: suez_canal_nationalized}
-    # Review of 2026-10-14 (EXPERIMENTS.md E41; Kyle, Suez, 1991; Kunz, The Economic Diplomacy
-    # of the Suez Crisis, 1991; Nichols, Eisenhower 1956, 2011). Britain and France invaded with
-    # Israel's pretext (Sevres); Eisenhower, not consulted, forced their withdrawal by money (a
-    # run on sterling, the IMF drawing and emergency oil withheld). Bulganin's rocket threat of
-    # 5 November was a bluff.
+    # Historical sources (Kyle, Suez, 1991; Kunz, The Economic Diplomacy of the Suez Crisis, 1991;
+    # Nichols, Eisenhower 1956, 2011). Britain and France invaded with Israel's pretext (Sevres);
+    # Eisenhower, not consulted, forced their withdrawal by money (a run on sterling, the IMF
+    # drawing and emergency oil withheld). Bulganin's rocket threat of 5 November was a bluff.
     model:
       family: crisis
       tier: 1
@@ -610,7 +606,7 @@ events:
           USSR: {side: b, values: {a_prevails: -0.8, b_prevails: 0.8, compromise: 0.0, limited_war: -3.0, nuclear_war: -40}, escalation_cost: 0.2}
           USA: {side: neutral, values: {a_prevails: -0.5, b_prevails: 0.4, compromise: 0.3, limited_war: -2.0, nuclear_war: -40}}
         script:
-          # Hidden types with leaders' own beliefs (user decisions 2026-10-14, E41):
+          # Hidden types with leaders' own beliefs:
           # - Soviet stakes: would Moscow fight for Nasser at all? A committed USSR (the 1955
           #   arms deal, Khrushchev's courting of Nasser) counts an allied victory as a heavy
           #   loss, sized so it would intervene if Britain pressed on after paying the
@@ -640,23 +636,21 @@ events:
           - {stage: move, actor: UK, options: [{id: withdraw, kind: concede}, {id: press_on, kind: hold}]}
           # The threat's follow-through: if Britain presses on, Moscow intervenes or not
           - {stage: move, actor: USSR, options: [{id: stand_aside, kind: hold}, {id: intervene, kind: fight}]}
-          # A regional war, never a nuclear one: no nuclear forces were readied, and the
-          # threat was a bluff. Under derived payoffs a nuclear war is worth -2000, so even
-          # the old 1% share outweighed every stake (user decision 2026-10-14, E41)
+          # A regional war, never a nuclear one: no nuclear forces were readied, and the threat
+          # was a bluff. This stage therefore carries no nuclear accident probability.
           - {stage: accident, base: 0.01, per_rung: 0.02}
         final_outcome: a_prevails
       bindings:
-        # The pressure bit through Britain's weakness (Kunz): reserves fell about $279 million
-        # in November 1956, and the US held back an IMF drawing until Britain withdrew. Its
-        # cost rises as Britain's economy weakens: 1.5 at the 1956 level (user decision
-        # 2026-10-14, E41)
+        # The pressure bit through Britain's weakness (Kunz): reserves fell about $279 million in
+        # November 1956, and the US held back an IMF drawing until Britain withdrew. Its cost
+        # rises as Britain's economy weakens: 1.5 at the 1956 level
         - {at: script.5.options.1.continue_cost, base: 4.65, terms: {powers.UK.economy: -10.0}, clamp: [0.5, 4.0]}
       historical:
         choices: {UK: [invade, withdraw], FRA: [join_invasion], EGY: [resist], USSR: [threaten_intervention], USA: [financial_pressure]}
         chance: [bluffing, calm]
         outcome: b_prevails
-    # Effects completed from the record (user decision 2026-10-14, E41; sizes are placeholders).
-    # Prestige effects were removed (prestige left the goals on 2026-10-10)
+    # Effects follow the historical record, with illustrative sizes. Prestige is excluded
+    # from the goal functions.
     outcomes:
       a_prevails:
         narrative: "British and French forces retake the canal; the Arab world turns against the West."
@@ -700,8 +694,8 @@ events:
           # wanted ended fast
           - {relations: {a: USA, b: USSR, add: -0.2}}
       nuclear_war: {effects: [{end_campaign: nuclear_war}]}
-    # Consequences of actions, whatever the outcome; derived payoffs count them as the
-    # action's costs (user decision 2026-10-14, E41)
+    # Consequences of actions, whatever the outcome; derived payoffs count them as the action's
+    # costs
     tags:
       "USSR:move=threaten_intervention": {effects: [{shift_influence: {region: middle_east, toward: USSR, amount: 0.05}}]}
       # The rift came with Washington's opposition: an acquiescent US that stood aside would
@@ -882,12 +876,11 @@ events:
         - compare: {path: powers.USSR.nuclear, op: lt, path_rhs: powers.USA.nuclear, scale: 0.8}
         - compare: {path: powers.USSR.tech_missile, op: ge, value: 1.0}
     narrative: "U-2 photographs reveal Soviet medium-range missiles in Cuba."
-    # Light review (2026-10-26, EXPERIMENTS.md E47; Fursenko and Naftali, "One Hell of a
-    # Gamble", 1997; Allison and Zelikow, Essence of Decision, 1999; May and Zelikow, The
-    # Kennedy Tapes, 1997; Dobbs, One Minute to Midnight, 2008; Sagan, The Limits of
-    # Safety, 1993). Mechanism: private information about resolve under the risk of
-    # inadvertent war (Schelling's "threat that leaves something to chance"), resolved by
-    # a secret side payment (the Jupiters in Turkey).
+    # Historical sources (Fursenko and Naftali, "One Hell of a Gamble", 1997; Allison and Zelikow,
+    # Essence of Decision, 1999; May and Zelikow, The Kennedy Tapes, 1997; Dobbs, One Minute to
+    # Midnight, 2008; Sagan, The Limits of Safety, 1993). Mechanism: private information about
+    # resolve under the risk of inadvertent war (Schelling's "threat that leaves something to
+    # chance"), resolved by a secret side payment (the Jupiters in Turkey).
     # - Khrushchev expected a fait accompli Kennedy would accept, reading him as weak after
     #   the Bay of Pigs and Vienna: his own prior on US resolve, bound to US credibility.
     # - Washington did not know of the ~42,000 Soviet troops (the CIA estimated ~10,000) or
@@ -908,8 +901,8 @@ events:
         roles:
           USA: {side: a, values: {a_prevails: 2.0, b_prevails: -2.0, compromise: 0.6, limited_war: -6.0, nuclear_war: -50}, escalation_cost: 0.15, audience_cost: 1.0}
           USSR: {side: b, values: {a_prevails: -2.0, b_prevails: 2.0, compromise: 0.8, limited_war: -6.0, nuclear_war: -50}, escalation_cost: 0.15, audience_cost: 1.5, high_resolve_war_factor: 0.5}
-          # officers (E48): computer-run commands that decide at incidents; they dread war
-          # and a hold costs them their belief that war has begun times their duty
+          # officers: computer-run commands that decide at incidents; they dread war and a hold
+          # costs them their belief that war has begun times their duty
           B59: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
           SAM: {side: neutral, values: {a_prevails: 0.0, b_prevails: 0.0, compromise: 0.0, limited_war: -2.0, nuclear_war: -10.0}}
         script:
@@ -926,13 +919,12 @@ events:
           # Khrushchev centralized it only after the U-2 fell (Fursenko and Naftali 1997)
           - {stage: move, actor: USSR, options: [{id: keep_delegation, kind: hold}, {id: centralize, kind: hold, control: 0.8}]}
           - {stage: signal, actor: USSR, options: [{id: conciliatory, stance: soft}, {id: hardline, stance: hard}]}
-          # Khrushchev's letters of 26 and 27 October as one signal (the second letter's
-          # revision dropped in E48 to keep the tree solvable with the officers)
-          # the SAM commanders who shot down Anderson's U-2 without Moscow's order (27
-          # October); the ExComm had agreed to strike the SAM sites if a U-2 fell, and
-          # Kennedy held off (May and Zelikow 1997). A strike on Cuba could turn nuclear
-          # where Soviet tactical warheads were ready (98 FKR and Luna warheads, unknown to
-          # Washington; McNamara at Havana, 1992)
+          # Khrushchev's letters of 26 and 27 October form one signal, keeping the game small
+          # enough to solve with officer decisions. SAM commanders shot
+          # down Anderson's U-2 without Moscow's order (27 October); the ExComm had agreed to
+          # strike the SAM sites if a U-2 fell, and Kennedy held off (May and Zelikow 1997). A
+          # strike on Cuba could turn nuclear where Soviet tactical warheads were ready (98 FKR
+          # and Luna warheads, unknown to Washington; McNamara at Havana, 1992)
           - stage: incident
             officer: SAM
             command: b

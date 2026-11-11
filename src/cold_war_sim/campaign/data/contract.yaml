@@ -1,8 +1,6 @@
-# The shared effects contract (provisional; user decision 2026-10-26, GOALS.md §12
-# decisions 20-21, EXPERIMENTS.md E47). Generic outcome effects per template, so that
-# events, and later the crisis generator, carry no bespoke effect sizes. An event opts in
-# with `model.effects: contract`; its outcomes then list only documented `additions`
-# (flags other events read, and effects specific to the event, each with its source).
+# Shared outcome effects for named and generated crises. The sizes are provisional.
+# An event uses these effects with `model.effects: contract`. Its outcomes may add
+# event-specific effects through `additions`, with a source for each addition.
 #
 # Who wins: the power roles on the winning side (crisis: roles of side a or b; attrition:
 # sponsors of side a or b). Computer-run roles (EGY, DRV, ...) have no influence or
@@ -13,8 +11,8 @@
 #
 # All sizes are judgment, in the range the reviewed events used (crises: credibility
 # 0.05-0.1, influence 0.05-0.25; wars: credibility 0.15-0.2, influence 0.15-0.5), with
-# ranges in the assumptions register. Noted for the generator round: scaling influence
-# by importance and then valuing it by importance in the goals counts importance twice.
+# ranges in the assumptions register. Influence changes scale with region importance,
+# and goals value that influence by importance again, so importance counts twice.
 
 reference_importance: 1.5  # about the mean region importance (1.43)
 
@@ -25,7 +23,7 @@ crisis:
     loser_credibility: -0.1
   compromise:
     tension: -0.05
-  limited_war:  # a war that is not played out: decision 6's explicit war costs
+  limited_war:  # a war that is not played out: explicit war costs
     quarters: 4  # costs equal to a year of full effort, by the dynamics' war drag
     forces: 0.05  # share of conventional forces lost (the dynamics drain no forces)
     region_stability: -0.3
@@ -42,7 +40,7 @@ attrition:
     winner_credibility: 0.1
     loser_credibility: -0.15
 
-# E48: the other three templates (provisional; the same judgment basis)
+# the other three templates (provisional; the same judgment basis)
 bargaining:
   agreement:
     relations: 0.1  # between the two parties

@@ -1,4 +1,4 @@
-# The crisis generator (GOALS.md section 12, decisions 16-21; EXPERIMENTS.md E49).
+# The crisis generator.
 #
 # Crises arise where the world makes them likely, on five templates over the families. Each
 # quarter, for each template and region, a crisis starts with hazard
@@ -9,23 +9,22 @@
 # crisis carries no hand-set stakes; its numbers here are generic judgment, in the register.
 #
 # Named crises take precedence: a region with a named or generated major event active, or one
-# that started within `precedence_quarters`, gets no generated crisis (decision 21). They also
-# count toward the base rates: the fit scales the factors so that named plus generated crises
-# match the data's marginal distributions by template, region group and decade (decision 18).
+# that started within `precedence_quarters`, gets no generated crisis. They also count toward the
+# base rates: the fit scales the factors so that named plus generated crises match the data's
+# marginal distributions by template, region group and decade.
 #
-# Data: International Crisis Behavior v16 (Brecher, Wilkenfeld et al., 2021; icbdata
-# at Duke), the 91 crises of 1945-91 with one of the five powers as a crisis actor (ICB2
-# actor codes 2, 365, 710, 200, 220), classified: full-scale war (ICB `viol` 4) a proxy war,
-# else a trigger of internal challenge to a regime (`break` 6) an uprising, else a standoff.
-# Only these aggregates are kept here. COW militarized disputes are not used: most lie
-# below the scale of the model's crises (E49). Alignment contests and settlements have no
-# dataset; their rates are judgment.
+# Data: International Crisis Behavior v16 (Brecher, Wilkenfeld et al., 2021; icbdata at Duke),
+# the 91 crises of 1945-91 with one of the five powers as a crisis actor (ICB2 actor codes 2,
+# 365, 710, 200, 220), classified: full-scale war (ICB `viol` 4) a proxy war, else a trigger of
+# internal challenge to a regime (`break` 6) an uprising, else a standoff. Only these aggregates
+# are kept here. COW militarized disputes are not used: most lie below the scale of the model's
+# crises. Alignment contests and settlements have no dataset; their rates are judgment.
 
 precedence_quarters: 4
 
-# a region's largest chance of a generated crisis of one template in a quarter (judgment:
-# about one a year). Factors multiply, so a busy decade and a busy group can push a cell the
-# fit rarely sees far past any rate in the data (E51).
+# a region's largest chance of a generated crisis of one template in a quarter (judgment: about
+# one a year). Factors multiply, so a busy decade and a busy group can push a cell the fit rarely
+# sees far past any rate in the data.
 hazard_cap: 0.25
 
 # the model's regions in ICB's geographic groups (ICB GEOG, UN regions)
@@ -67,7 +66,7 @@ features:
 templates:
   standoff:  # a coercive standoff: the rival challenges the region's leading power
     family: crisis
-    rate: 0.245252  # per region-quarter at the reference features (fitted, E51)
+    rate: 0.245252  # per region-quarter at the reference features (fitted)
     group_factor: {europe: 0.7419, middle_east: 1.5071, south_asia: 1.2106, east_asia: 0.4116, americas: 0.8015, africa: 1.3274}
     decade_factor: {1940: 4.2518, 1950: 0.3862, 1960: 0.4657, 1970: 0.4327, 1980: 0.3115, 1990: 0.1522}
     config:
@@ -81,7 +80,7 @@ templates:
         - {stage: move, actor: $A, options: [{id: hold, kind: hold}, {id: escalate, kind: escalate}, {id: offer_deal, kind: deal}, {id: give_way, kind: concede}]}
         - {stage: respond, actor: $B}
         - {stage: move, actor: $B, options: [{id: press_on, kind: hold}, {id: escalate, kind: escalate}, {id: withdraw, kind: concede}]}
-        # generic risk (judgment, QUESTIONS Q27): a war by accident, a small share nuclear
+        # generic risk (judgment): a war by accident, a small share nuclear
         - {stage: accident, per_rung: 0.03, nuclear_per_rung: 0.02}
       final_outcome: a_prevails  # the status quo holds unless the leading power gives way
 
@@ -89,12 +88,12 @@ templates:
               # insurgents by its rival; under colonial rule the owner fights for itself
     family: attrition
     cadence: annual
-    rate: 0.02797  # per region-quarter at the reference features (fitted, E51)
+    rate: 0.02797  # per region-quarter at the reference features (fitted)
     group_factor: {europe: 0.2699, middle_east: 3.9363, south_asia: 0.1698, east_asia: 0.2721, americas: 0.4349, africa: 0.9171}
     decade_factor: {1940: 0.5372, 1950: 0.4837, 1960: 0.8991, 1970: 2.5762, 1980: 0.3046, 1990: 1.1992}
     config:
       sponsors:
-        # the local sides (computer-run, hand values: generic judgment, as Hanoi's in E47)
+        # Local sides are computer-run, with illustrative payoffs as in the Vietnam model.
         GOV: {side: a, capacity: 0.0, cost_scale: 0.2, values: {a_victory: 3.0, b_victory: -5.0, partition: -1.0, a_withdrew: -5.0, b_withdrew: 3.0, stalemate: -0.5}}
         INS: {side: b, capacity: 0.0, cost_scale: 0.2, values: {a_victory: -5.0, b_victory: 3.0, partition: -1.0, a_withdrew: 3.0, b_withdrew: -5.0, stalemate: -0.5}}
         $A: {side: a, capacity: 0.8, direct: true, values: {a_victory: 1.0, b_victory: -1.0, partition: 0.0, a_withdrew: -1.0, b_withdrew: 1.0, stalemate: 0.0}}
@@ -114,7 +113,7 @@ templates:
 
   uprising:  # a client's uprising: the leading power decides whether to crush it
     family: intervention
-    rate: 0.158484  # per region-quarter at the reference features (fitted, E51)
+    rate: 0.158484  # per region-quarter at the reference features (fitted)
     group_factor: {europe: 0.0403, middle_east: 1.8282, south_asia: 0.1415, east_asia: 0.1102, americas: 0.2286, africa: 3.6511}
     decade_factor: {1940: 5.5327, 1950: 0.092, 1960: 0.3271, 1970: 0.0231, 1980: 0.0143, 1990: 0.0109}
     config:

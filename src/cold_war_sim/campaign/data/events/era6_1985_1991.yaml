@@ -134,8 +134,8 @@ events:
         - compare: {path: powers.USSR.stability, op: lt, value: 0.12}
     narrative: "The Soviet flag is lowered over the Kremlin; the Soviet Union ceases to exist."
     # the bloc dissolves with the Union: Soviet influence everywhere falls to neutral (troops
-    # leave Eastern Europe and Germany, client states lose their patron), so the goals
-    # measure what the end of the Cold War means (user decision 2026-10-12; E33)
+    # leave Eastern Europe and Germany, client states lose their patron), so the goals measure
+    # what the end of the Cold War means
     effects:
       - {flag: ussr_dissolved}
       - {status: {power: USSR, to: eliminated}}
@@ -247,13 +247,12 @@ events:
             - leader: {power: USSR, in: [gorbachev]}
             - compare: {path: powers.USSR.stability, op: lt, value: 0.45}
     narrative: "Poland elects Solidarity; Hungary opens its border; crowds fill the streets of Leipzig and Prague."
-    # Light review (2026-10-26, EXPERIMENTS.md E48; Sarotte, 1989, 2009, and The Collapse,
-    # 2014; Kramer, J. Cold War Studies 5, 2003; Kotkin, Uncivil Society, 2009; Kuran, World
-    # Politics 44, 1991; Lohmann, World Politics 47, 1994). Mechanism: a tipping cascade:
-    # each country's crowds grew as others fell unpunished, so the movement's strength
-    # rises as the region's stability falls (bound), and Moscow's cost of force rises with
-    # Gorbachev's reformism (bound). Bush's caution ("I'm not going to dance on the Wall")
-    # is Washington's choice as the rival.
+    # Historical sources (Sarotte, 1989, 2009, and The Collapse, 2014; Kramer, J. Cold War Studies 5,
+    # 2003; Kotkin, Uncivil Society, 2009; Kuran, World Politics 44, 1991; Lohmann, World
+    # Politics 47, 1994). Mechanism: a tipping cascade: each country's crowds grew as others fell
+    # unpunished, so the movement's strength rises as the region's stability falls (bound), and
+    # Moscow's cost of force rises with Gorbachev's reformism (bound). Bush's caution ("I'm not
+    # going to dance on the Wall") is Washington's choice as the rival.
     model:
       family: intervention
       tier: 1
@@ -334,13 +333,12 @@ events:
             - flag: eastern_bloc_collapsed
             - flag: baltic_independence
     narrative: "Hardliners place Gorbachev under arrest and send tanks into Moscow."
-    # Light review (2026-10-26, EXPERIMENTS.md E48; Plokhy, The Last Empire, 2014; Knight,
-    # Spies Without Cloaks, 1996; Taylor, Politics and the Russian Army, 2003; Dunlop, The
-    # Rise of Russia and the Fall of the Soviet Empire, 1993). Mechanism: coups are decided
-    # by whether the security forces obey (Taylor 2003; Singh, Seizing Power, 2014): the
-    # resistance's strength (the army's defection) rises as Soviet stability falls (bound).
-    # Washington's choice to condemn or stay silent is the rival's. The Soviet seat values
-    # the union's fate by its goals (derived).
+    # Historical sources (Plokhy, The Last Empire, 2014; Knight, Spies Without Cloaks, 1996; Taylor,
+    # Politics and the Russian Army, 2003; Dunlop, The Rise of Russia and the Fall of the Soviet
+    # Empire, 1993). Mechanism: coups are decided by whether the security forces obey (Taylor
+    # 2003; Singh, Seizing Power, 2014): the resistance's strength (the army's defection) rises
+    # as Soviet stability falls (bound). Washington's choice to condemn or stay silent is the
+    # rival's. The Soviet seat values the union's fate by its goals (derived).
     model:
       family: intervention
       tier: 1

@@ -21,12 +21,12 @@ powers:
       prestige: 0.85
       posture: balanced
       leader: truman
-    tech_rates: {nuclear: 0.6, missile: 1.0, space: 0.48}  # 0.5 -> 0.48 (2026-10-13, E35): the smaller growth penalty of military postures put Apollo 11 in 1968-Q3
+    tech_rates: {nuclear: 0.6, missile: 1.0, space: 0.48}  # 0.5 -> 0.48: the smaller growth penalty of military postures put Apollo 11 in 1968-Q3
     military_efficiency: 1.0
     casualty_sensitivity: 1.0  # a democracy: support falls with casualties (Mueller 1973; Gartner and Segura 1998)
     score_weights: {security: 1.0, influence: 1.5, economy: 1.0, prestige: 0.8, stability: 0.6, credibility: 0.6}
     # end bonuses apply to reward="score" only; under the goal reward the dissolution's own
-    # effects (Soviet influence collapses) carry its meaning (user decision 2026-10-12; E33)
+    # effects (Soviet influence collapses) carry its meaning
     end_bonus: {ussr_dissolved: 3.0}
   USSR:
     name: Soviet Union
@@ -68,7 +68,7 @@ powers:
       prestige: 0.3
       posture: conventional
       leader: mao
-    tech_rates: {nuclear: 2.3, missile: 1.0, space: 0.6}  # 2.2 -> 2.3 (2026-10-10): insurgent war costs slowed the first bomb to 1965-Q2
+    tech_rates: {nuclear: 2.3, missile: 1.0, space: 0.6}  # 2.2 -> 2.3: insurgent war costs slowed the first bomb to 1965-Q2
     military_efficiency: 0.8
     casualty_sensitivity: 0.3  # an autocracy (Weeks 2008)
     score_weights: {security: 1.2, influence: 0.8, economy: 1.0, prestige: 0.8, stability: 1.0, credibility: 0.4}
@@ -118,9 +118,8 @@ powers:
     score_weights: {security: 0.8, influence: 1.0, economy: 1.2, prestige: 1.2, stability: 0.8, credibility: 0.5}
     end_bonus: {ussr_dissolved: 1.0}
 
-# Postures: the shares of the state budget (economy x burden) reinvested in the economy and
-# spent on conventional forces, nuclear forces and science. Each row sums to 1. Moved from
-# dynamics.py on 2026-10-17 with the same values. Provenance: illustrative.
+# Postures: the shares of the state budget (economy x burden) reinvested in the economy and spent
+# on conventional forces, nuclear forces and science. Each row sums to 1. Values are illustrative.
 postures:
   economy: {economy: 0.55, conventional: 0.2, nuclear: 0.1, science: 0.15}
   balanced: {economy: 0.35, conventional: 0.3, nuclear: 0.2, science: 0.15}
@@ -147,15 +146,13 @@ dynamics:
   war_stability_drain: 0.04
 
 rewards:
-  # Nuclear war: one fixed catastrophe for every power, in goal-score units (user decision
-  # 2026-10-20, QUESTIONS Q27). 2 is four times the US's 1962 goal score (0.50); at kappa
-  # 100 it is -200 in payoff units, so a 1% chance of nuclear war costs 2, the size of a
-  # typical crisis stake (Cuba, E12: US prevails +1.86, USSR prevails -3.48). At 20 a 0.1%
-  # chance outweighed every stake and brinkmanship could not exist. Also the RL campaign's
-  # terminal penalty, and the score reward's.
+  # Nuclear war: one fixed catastrophe for every power, in goal-score units. 2 is four times the
+  # US's 1962 goal score (0.50); at kappa 100 it is -200 in payoff units, so a 1% chance of
+  # nuclear war costs 2, the size of a typical crisis stake (Cuba, US prevails +1.86, USSR
+  # prevails -3.48). At 20 a 0.1% chance outweighed every stake and brinkmanship could not exist.
+  # Also the RL campaign's terminal penalty, and the score reward's.
   nuclear_war_penalty: 2.0
-  # Losing a seat (elimination, or the Communists losing China) under the goal reward:
-  # the goal score drops to zero, so the penalty is the score held, but at least
-  # loss_floor (decided 2026-10-10; docs/GOALS.md section 7).
+  # Losing a seat (elimination, or the Communists losing China) under the goal reward: the goal
+  # score drops to zero, so the penalty is the score held, but at least loss_floor.
   loss_floor: 0.1
   elimination_penalty: 5.0  # reward="score" (pre-goals comparison) only
