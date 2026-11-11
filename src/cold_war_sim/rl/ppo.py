@@ -1,43 +1,4 @@
-"""Masked-PPO self-play on single-event scenarios.
-
-* **Agents:** one actor-critic per learning identity (USA, USSR, PRC, ROC, UK, FRA); an
-  identity's network plays every role its power takes in any event. All agents learn at
-  once (simultaneous self-play); computer-run roles keep reference play.
-* **Inputs:** the campaign observation. Its numeric part is normalized by running
-  statistics per identity; its last ``TOKEN_SLOTS`` entries are hashed log-token ids
-  (the role's information state, newest first), embedded and concatenated, so the input
-  identifies the information set exactly (E44).
-* **Policy:** masked logits over ``MAX_OPTIONS`` (illegal options get -1e9).
-* **Credit:** an agent's reward (the scenario's return, at the end) is credited to its last
-  decision; GAE over each agent's decisions in an episode (gamma 1, lambda 0.95).
-* **Update:** clipped PPO. Two objectives (E46):
-
-  - ``qre`` (the default): the target is the logit agent QRE at ``temperature`` (in payoff
-    units, the reference play's tau). At each information set, maximizing
-    sum_a pi(a) Q(a) + tau H(pi) has the fixed point pi ~ exp(Q / tau), the QRE that
-    ``games.algorithms.qre`` computes on trees, provided advantages stay in payoff units:
-    rewards are the event's payoffs (the scenario return times kappa), advantages are not
-    normalized, the entropy weight is tau, and the value loss is Huber. Every action keeps
-    probability e^(-dQ/tau), so rare branches keep being explored (E45: Suez's committed
-    Moscow never learned to intervene under plain PPO).
-  - ``ppo``: E45's plain PPO, rewards scaled by the running standard deviation of returns,
-    advantages normalized per minibatch, entropy weight ``entropy`` (not a temperature).
-* **Rollouts:** worker processes, each with its own :class:`ScenarioEnv`; the learner
-  sends weights and normalizer statistics each iteration. Episode seeds are fixed by the
-  run seed and iteration, so a run is reproducible for a given worker count.
-* **Freestyle** (``mode="campaign"``, E49): the whole campaign from 1945 instead of one
-  event (:class:`CampaignTrainingEnv`), rewarded by the goal function each quarter, in
-  tier-1 mode with tier-2 events on reference play (``rails``) and optionally the crisis
-  generator.
-* **League** (``league=K``, E49): every K iterations each identity's weights join a pool;
-  in each episode each identity plays a past snapshot with probability ``league_share``
-  (its steps then train nothing), so agents meet older opponents and conventions that
-  beat only the current ones lose their edge (fictitious self-play, as in AlphaStar's
-  league).
-* **Best responses** (``trainable``): only the listed identities learn; the rest keep
-  their weights. ``br.best_response`` trains one against a frozen checkpoint and
-  measures its gain (approximate exploitability, for events without a tree).
-"""
+"""Train campaign policies with PPO or an entropy-regularized payoff objective."""
 
 from __future__ import annotations
 
@@ -45,9 +6,8 @@ import json
 import math
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -55,62 +15,135 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..catalog import Catalog, load_catalog
-from ..decisions import MAX_OPTIONS
-from ..engine import EngineConfig
-from ..env import ColdWarEnv
-from ..observation import TOKEN_SLOTS, TOKEN_SPACE
-from ..scenario import Entry, ScenarioEnv, load_entries
-from ..state import IDENTITIES, POWERS
+from ..campaign.catalog.core import load_catalog
+from ..campaign.environments.observation import TOKEN_SLOTS
+from ..campaign.environments.scenario import Entry, load_entries
+from ..campaign.world.state import IDENTITIES, POWERS
+from ..records import Record
+from .networks import EMBED, ActorCritic, LearnedPolicy, RunningStats, split
+from .rollouts import (
+    _WORKER,
+    CampaignTrainingEnv,
+    Episode,
+    Norms,
+    Snapshot,
+    Weights,
+    _init_worker,
+    _rollout,
+    make_env,
+    play_episode,
+)
 
-EMBED = 16  # size of a token embedding
 OBJECTIVES = ("qre", "ppo")
 HUBER_DELTA = 10.0  # payoff units: quadratic for crisis stakes, linear for catastrophes
 
 
-@dataclass(frozen=True)
-class PPOConfig:
-    entries: str  # a pickle of scenario entries (scenario.save_entries)
-    events: tuple[str, ...] = ()  # () = every event in the entries
-    iterations: int = 50
-    episodes: int = 256  # per iteration, across workers
-    workers: int = 4
-    hidden: int = 256
-    lr: float = 3e-4
-    epochs: int = 4
-    minibatch: int = 256
-    clip: float = 0.2
-    gamma: float = 1.0
-    lam: float = 0.95
-    entropy: float = 0.01
-    value_coef: float = 0.5
-    max_grad_norm: float = 0.5
-    seed: int = 0
-    playable_tier: int | None = 1
-    npc_policy: str = "equilibrium"
-    agents: tuple[str, ...] = POWERS  # powers whose roles learn
-    checkpoint_every: int = 10
-    eval_every: int = 10  # exploitability on tree events; 0 = never
-    objective: str = "qre"  # "qre": the logit QRE at `temperature`; "ppo": E45's plain PPO
-    temperature: float = 0.1  # payoff units; the reference play's tau (E26)
-    # the QRE path (qre objective): start hot and cool geometrically to `temperature` over
-    # the first `anneal` share of iterations, as games.algorithms.qre does on trees (E46)
-    temperature_start: float | None = None
-    anneal: float = 0.5
-    # after cooling, the learning rate decays linearly to lr_final (None: constant): near a
-    # steep QRE, sampling noise otherwise moves play around it (E46)
-    lr_final: float | None = None
-    mode: str = "scenario"  # "scenario": single events from entries; "campaign": freestyle
-    generator: bool = False  # campaign mode: the crisis generator
-    rails: str = "reference"  # campaign mode: tier-2 events on reference play
-    trainable: tuple[str, ...] = ()  # identities that learn; () = all
-    league: int = 0  # snapshot every K iterations into the league pool; 0 = off
-    league_share: float = 0.5  # chance an identity plays a past snapshot in an episode
-    # scenario mode: nature's stretches taken in expectation, the sampled path weighted
-    # (EngineConfig.chance_expected, E50); advantages and losses use the weights
-    chance_expected: bool = False
+class PPOConfig(Record):
+    """The training configuration (saved in checkpoints and ``config.json`` by field name).
 
-    def __post_init__(self) -> None:
+    **Objectives**. ``qre``, the default, targets the logit agent QRE at
+    ``temperature`` (payoff units): at each information set, maximizing
+    ``sum_a pi(a) Q(a) + tau H(pi)`` has the fixed point ``pi ~ exp(Q / tau)``, provided
+    advantages stay in payoff units. So rewards are the event's payoffs (the scenario's
+    return times kappa), advantages are not normalized, the entropy weight is tau, and the
+    value loss is Huber. ``ppo`` is plain PPO: returns scaled by their running deviation,
+    advantages normalized per minibatch, entropy weight ``entropy``.
+
+    **Annealing.** With ``temperature_start``, tau cools geometrically to ``temperature``
+    over the first ``anneal`` share of iterations; with ``lr_final``, the learning rate then
+    decays linearly to it.
+
+    **Modes.** ``scenario`` plays single events from ``entries``; ``campaign`` plays the whole
+    campaign from 1945, rewarded by the goal function each quarter (freestyle).
+
+    **League** (``league=K``). Every K iterations each identity's weights join a pool, and in
+    each episode each identity plays a past snapshot with probability ``league_share``
+    (fictitious self-play). **Best responses:** only the ``trainable`` identities learn.
+
+    **Chance-expected returns** (``chance_expected``): see
+    ``EngineConfig.chance_expected``; advantages and losses use the survival weights.
+    """
+
+    def __init__(
+        self,
+        entries: str,
+        events: tuple[str, ...] = (),
+        iterations: int = 50,
+        episodes: int = 256,
+        workers: int = 4,
+        hidden: int = 256,
+        lr: float = 3e-4,
+        epochs: int = 4,
+        minibatch: int = 256,
+        clip: float = 0.2,
+        gamma: float = 1.0,
+        lam: float = 0.95,
+        entropy: float = 0.01,
+        value_coef: float = 0.5,
+        max_grad_norm: float = 0.5,
+        seed: int = 0,
+        playable_tier: int | None = 1,
+        npc_policy: str = "equilibrium",
+        agents: tuple[str, ...] = POWERS,
+        checkpoint_every: int = 10,
+        eval_every: int = 10,
+        objective: str = "qre",
+        temperature: float = 0.1,
+        temperature_start: float | None = None,
+        anneal: float = 0.5,
+        lr_final: float | None = None,
+        mode: str = "scenario",
+        generator: bool = False,
+        rails: str = "reference",
+        trainable: tuple[str, ...] = (),
+        league: int = 0,
+        league_share: float = 0.5,
+        chance_expected: bool = False,
+    ) -> None:
+        self.entries = entries  # a pickle of scenario entries (scenario.save_entries)
+        self.events = events  # () = every event in the entries
+        self.iterations = iterations
+        self.episodes = episodes  # per iteration, across workers
+        self.workers = workers
+        self.hidden = hidden
+        self.lr = lr
+        self.epochs = epochs
+        self.minibatch = minibatch
+        self.clip = clip
+        self.gamma = gamma
+        self.lam = lam
+        self.entropy = entropy
+        self.value_coef = value_coef
+        self.max_grad_norm = max_grad_norm
+        self.seed = seed
+        self.playable_tier = playable_tier
+        self.npc_policy = npc_policy
+        self.agents = agents  # powers whose roles learn
+        self.checkpoint_every = checkpoint_every
+        self.eval_every = eval_every  # exploitability on tree events; 0 = never
+        self.objective = objective  # "qre": the logit QRE at `temperature`; "ppo": plain PPO
+        self.temperature = temperature  # payoff units; the reference play's tau
+        # the QRE path (qre objective): start hot and cool geometrically to `temperature` over
+        # the first `anneal` share of iterations, as games.algorithms.qre does on trees
+        self.temperature_start = temperature_start
+        self.anneal = anneal
+        # after cooling, the learning rate decays linearly to lr_final (None: constant): near a
+        # steep QRE, sampling noise otherwise moves play around it
+        self.lr_final = lr_final
+        self.mode = mode  # "scenario": single events from entries; "campaign": freestyle
+        self.generator = generator  # campaign mode: the crisis generator
+        self.rails = rails  # campaign mode: tier-2 events on reference play
+        self.trainable = trainable  # identities that learn; () = all
+        self.league = league  # snapshot every K iterations into the league pool; 0 = off
+        self.league_share = league_share  # chance an identity plays a past snapshot in an episode
+        # scenario mode: nature's stretches taken in expectation, the sampled path weighted
+        # (EngineConfig.chance_expected); advantages and losses use the weights
+        self.chance_expected = chance_expected
+        self._check()
+
+    def _check(self) -> None:
+        """Raise if a setting is out of range or two settings conflict."""
+
         if self.objective not in OBJECTIVES:
             raise ValueError(f"objective must be one of {OBJECTIVES}")
         if self.temperature <= 0.0:
@@ -152,280 +185,6 @@ class PPOConfig:
         )
 
 
-# ------------------------------------------------------------------ statistics
-@dataclass
-class RunningStats:
-    """Running mean and variance (Chan et al.'s parallel update)."""
-
-    count: float = 1e-4
-    mean: np.ndarray = field(default_factory=lambda: np.zeros(1))
-    var: np.ndarray = field(default_factory=lambda: np.ones(1))
-
-    @classmethod
-    def of_size(cls, size: int) -> RunningStats:
-        return cls(1e-4, np.zeros(size), np.ones(size))
-
-    def update(self, batch: np.ndarray) -> None:
-        if len(batch) == 0:
-            return
-        b_mean, b_var, b_count = batch.mean(axis=0), batch.var(axis=0), float(len(batch))
-        delta = b_mean - self.mean
-        total = self.count + b_count
-        self.mean = self.mean + delta * b_count / total
-        m2 = self.var * self.count + b_var * b_count + delta**2 * self.count * b_count / total
-        self.var = m2 / total
-        self.count = total
-
-    def normalize(self, x: np.ndarray) -> np.ndarray:
-        result: np.ndarray = np.clip((x - self.mean) / np.sqrt(self.var + 1e-8), -10.0, 10.0)
-        return result
-
-    def state(self) -> dict[str, Any]:
-        return {"count": self.count, "mean": self.mean.tolist(), "var": self.var.tolist()}
-
-    @classmethod
-    def from_state(cls, state: Mapping[str, Any]) -> RunningStats:
-        return cls(float(state["count"]), np.asarray(state["mean"]), np.asarray(state["var"]))
-
-
-# --------------------------------------------------------------------- network
-class ActorCritic(nn.Module):
-    """Numeric features plus embedded log tokens -> masked logits and a value."""
-
-    def __init__(self, obs_size: int, hidden: int = 256) -> None:
-        super().__init__()
-        self.numeric = obs_size - TOKEN_SLOTS
-        self.embed = nn.Embedding(TOKEN_SPACE, EMBED, padding_idx=0)
-        self.body = nn.Sequential(
-            nn.Linear(self.numeric + TOKEN_SLOTS * EMBED, hidden),
-            nn.Tanh(),
-            nn.Linear(hidden, hidden),
-            nn.Tanh(),
-        )
-        self.pi = nn.Linear(hidden, MAX_OPTIONS)
-        self.v = nn.Linear(hidden, 1)
-        nn.init.orthogonal_(self.pi.weight, gain=0.01)
-        nn.init.zeros_(self.pi.bias)
-
-    def forward(
-        self, numeric: torch.Tensor, tokens: torch.Tensor, mask: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        embedded = self.embed(tokens).flatten(1)
-        h = self.body(torch.cat([numeric, embedded], dim=1))
-        logits = self.pi(h).masked_fill(mask == 0, -1e9)
-        return logits, self.v(h).squeeze(-1)
-
-
-def split(obs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Numeric features and token ids of observations (rows)."""
-
-    obs = np.atleast_2d(obs)
-    return obs[:, :-TOKEN_SLOTS], obs[:, -TOKEN_SLOTS:].astype(np.int64)
-
-
-class LearnedPolicy:
-    """Networks and normalizers as a policy over options (``evaluate.OptionPolicy``)."""
-
-    def __init__(
-        self, models: Mapping[str, ActorCritic], norms: Mapping[str, RunningStats]
-    ) -> None:
-        self.models = dict(models)
-        self.norms = dict(norms)
-
-    def forward(
-        self, ident: str, obs: np.ndarray, mask: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
-        numeric, tokens = split(obs)
-        x = torch.as_tensor(self.norms[ident].normalize(numeric), dtype=torch.float32)
-        with torch.no_grad():
-            logits, value = self.models[ident](
-                x, torch.as_tensor(tokens), torch.as_tensor(np.atleast_2d(mask))
-            )
-            probs = torch.softmax(logits, dim=-1)
-        return probs.numpy(), value.numpy()
-
-    def probabilities(self, ident: str, obs: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        probs, _ = self.forward(ident, obs, mask)
-        result: np.ndarray = probs[0]
-        return result
-
-
-# --------------------------------------------------------------------- rollouts
-@dataclass
-class Episode:
-    event_id: str
-    entry: str
-    outcome: str | None
-    returns: dict[str, float]
-    # identity -> obs, mask, action, logp, value, reward, survival
-    steps: dict[str, dict[str, list[Any]]]
-    masses: dict[str, float] = field(default_factory=dict)  # outcome -> probability mass
-
-
-def play_episode(
-    env: ScenarioEnv | CampaignTrainingEnv,
-    policy: LearnedPolicy,
-    seed: int,
-    rng: np.random.Generator,
-    event: str | None = None,
-    record: Iterable[str] | None = None,
-) -> Episode:
-    """One episode; only identities in *record* (default: all) keep their steps."""
-
-    keep = None if record is None else set(record)
-    env.reset(seed, event=event)
-    steps: dict[str, dict[str, list[Any]]] = {}
-    while env.agents:
-        agent = env.agent_selection
-        obs, reward, term, trunc, info = env.last()
-        record = steps.get(agent)
-        if record is not None and record["reward"]:
-            record["reward"][-1] += reward
-        if term or trunc:
-            env.step(None)
-            continue
-        mask = env.action_mask(agent)
-        probs, value = policy.forward(agent, obs, mask)
-        p = probs[0].astype(np.float64)
-        p = p / p.sum()
-        action = int(rng.choice(len(p), p=p))
-        if keep is not None and agent not in keep:
-            env.step(action)
-            continue
-        record = steps.setdefault(
-            agent,
-            {k: [] for k in ("obs", "mask", "action", "logp", "value", "reward", "survival")},
-        )
-        record["obs"].append(np.asarray(obs, dtype=np.float32))
-        record["mask"].append(np.asarray(mask, dtype=np.int8))
-        record["action"].append(action)
-        record["logp"].append(math.log(max(p[action], 1e-12)))
-        record["value"].append(float(value[0]))
-        record["reward"].append(0.0)
-        record["survival"].append(float(info.get("survival", 1.0)))
-        env.step(action)
-    masses: dict[str, float] = {}
-    if isinstance(env, ScenarioEnv) and env.expected:
-        masses = env.outcome_masses()
-    return Episode(
-        env.event_id,
-        env.entry.label if env.entry else "",
-        env.outcome(),
-        env.returns(),
-        steps,
-        masses,
-    )
-
-
-_WORKER: dict[str, Any] = {}
-
-
-def _init_worker(config: PPOConfig) -> None:
-    torch.set_num_threads(1)
-    catalog = load_catalog()
-    _WORKER["env"] = make_env(config, catalog)
-    _WORKER["models"] = {}
-
-
-class CampaignTrainingEnv(ColdWarEnv):
-    """The whole campaign (freestyle) with :class:`ScenarioEnv`'s training interface:
-    rewards are the goal function's per quarter, and an episode's return is their sum."""
-
-    event_id = "campaign"
-    entry = None
-
-    def reset(self, seed: int = 0, event: str | None = None, entry: int | None = None) -> None:
-        self._totals: dict[str, float] = defaultdict(float)
-        super().reset(seed)
-
-    def _collect(self) -> None:
-        super()._collect()
-        for agent, reward in self.rewards.items():
-            self._totals[agent] += reward
-
-    def returns(self) -> dict[str, float]:
-        return dict(self._totals)
-
-    def outcome(self) -> str | None:
-        return self.engine.world.ended or "end_of_game"
-
-
-def make_env(config: PPOConfig, catalog: Catalog) -> ScenarioEnv | CampaignTrainingEnv:
-    if config.mode == "campaign":
-        return CampaignTrainingEnv(
-            catalog,
-            EngineConfig(
-                npc_policy=config.npc_policy,
-                playable_tier=config.playable_tier,
-                agents=config.agents,
-                generator=config.generator,
-                rails=config.rails,
-            ),
-        )
-    entries = load_entries(Path(config.entries))
-    if config.events:
-        missing = sorted(set(config.events) - set(entries))
-        if missing:
-            raise ValueError(f"no entries for {missing}")
-        entries = {e: entries[e] for e in config.events}
-    engine_config = EngineConfig(
-        npc_policy=config.npc_policy,
-        playable_tier=config.playable_tier,
-        agents=config.agents,
-        chance_expected=config.chance_expected,
-    )
-    return ScenarioEnv(entries, catalog, engine_config)
-
-
-Weights = dict[str, dict[str, np.ndarray]]
-Norms = dict[str, dict[str, Any]]  # identity -> RunningStats.state()
-Snapshot = tuple[Weights, Norms]  # a league entry: networks with their own normalizers
-
-
-def _models(weights: Weights, obs_size: int, hidden: int, cache: dict[str, Any]) -> dict[str, Any]:
-    models = {}
-    for ident, state in weights.items():
-        model = cache.get(ident)
-        if model is None:
-            model = cache[ident] = ActorCritic(obs_size, hidden)
-        model.load_state_dict({k: torch.as_tensor(v) for k, v in state.items()})
-        model.eval()
-        models[ident] = model
-    return models
-
-
-def _stats(norms: Norms) -> dict[str, RunningStats]:
-    return {k: RunningStats.from_state(v) for k, v in norms.items()}
-
-
-def _rollout(
-    task: tuple[Weights, Norms, list[int], int, int, list[Snapshot], float],
-) -> list[Episode]:
-    weights, norms, seeds, obs_size, hidden, pool, share = task
-    env = _WORKER["env"]
-    current = _models(weights, obs_size, hidden, _WORKER["models"])
-    stats = _stats(norms)
-    past = [
-        (_models(w, obs_size, hidden, _WORKER.setdefault(f"pool{n}", {})), _stats(old))
-        for n, (w, old) in enumerate(pool)
-    ]
-    episodes = []
-    for seed in seeds:
-        rng = np.random.default_rng(seed + 7919)
-        models, used, record = dict(current), dict(stats), set(current)
-        if past:
-            for ident in list(current):  # each identity may play a past snapshot instead
-                if rng.random() < share:
-                    snapshot, snapshot_stats = past[int(rng.integers(len(past)))]
-                    models[ident] = snapshot[ident]
-                    used[ident] = snapshot_stats[ident]  # with the normalizer it learned on
-                    record.discard(ident)
-        policy = LearnedPolicy(models, used)
-        episodes.append(play_episode(env, policy, seed, rng, record=record))
-    return episodes
-
-
-# ---------------------------------------------------------------------- learner
 def gae(
     rewards: Sequence[float],
     values: Sequence[float],
@@ -433,12 +192,18 @@ def gae(
     lam: float,
     survival: Sequence[float] | None = None,
 ) -> np.ndarray:
-    """Advantages of one agent's decisions in one episode (the last one is terminal).
+    """Estimate advantages along one agent's episode using GAE.
 
-    With *survival* (chance-expected returns, E50) the rewards are weighted from the
-    episode's start, and step t's return is taken relative to its own weight s_t: the
-    reward is r_t / s_t, and the step to the next decision is discounted by s_{t+1} / s_t.
-    With every weight 1 this is the usual GAE."""
+    With survival weights s_t, rewards r_t already include the probability of
+    reaching each choice. Divide by s_t to value the choice conditional on
+    reaching it, and discount the next value by d_t = gamma * s_(t+1) / s_t:
+
+        delta_t = r_t / s_t + d_t * V_(t+1) - V_t
+        A_t = delta_t + d_t * lam * A_(t+1)
+
+    At the last choice the next value and advantage are zero. Without survival
+    weights, use s_t = 1 throughout, giving ordinary GAE.
+    """
 
     n = len(rewards)
     advantages = np.zeros(n)
@@ -456,15 +221,28 @@ def gae(
     return advantages
 
 
-@dataclass
-class Batch:
-    obs: np.ndarray
-    mask: np.ndarray
-    action: np.ndarray
-    logp: np.ndarray
-    advantage: np.ndarray
-    target: np.ndarray
-    weight: np.ndarray | None = None  # each decision's survival weight (E50)
+class Batch(Record):
+    """One identity's decisions from an iteration's episodes: observations, masks,
+    actions, old log-probabilities, advantages, value targets and survival weights.
+    """
+
+    def __init__(
+        self,
+        obs: np.ndarray,
+        mask: np.ndarray,
+        action: np.ndarray,
+        logp: np.ndarray,
+        advantage: np.ndarray,
+        target: np.ndarray,
+        weight: np.ndarray | None = None,
+    ) -> None:
+        self.obs = obs
+        self.mask = mask
+        self.action = action
+        self.logp = logp
+        self.advantage = advantage
+        self.target = target
+        self.weight = weight  # each decision's survival weight
 
 
 def batch_for(
@@ -514,6 +292,8 @@ def batch_for(
 
 
 def _mean(x: torch.Tensor, w: torch.Tensor | None) -> torch.Tensor:
+    """The mean of *x*, weighted by *w* if given."""
+
     return x.mean() if w is None else (w * x).mean()
 
 
@@ -588,20 +368,33 @@ def update(
     return {k: float(np.mean(v)) for k, v in stats.items()}
 
 
-# ------------------------------------------------------------------- training
-@dataclass
-class Learner:
-    config: PPOConfig
-    obs_size: int
-    models: dict[str, ActorCritic]
-    optimizers: dict[str, torch.optim.Optimizer]
-    obs_norms: dict[str, RunningStats]
-    return_norms: dict[str, RunningStats]
-    iteration: int = 0
-    kappa: float = 100.0  # goal units -> payoff units (the qre objective learns on payoffs)
+class Learner(Record):
+    """The learner: each identity's network, optimizer and normalizers, and the iteration."""
+
+    def __init__(
+        self,
+        config: PPOConfig,
+        obs_size: int,
+        models: dict[str, ActorCritic],
+        optimizers: dict[str, torch.optim.Optimizer],
+        obs_norms: dict[str, RunningStats],
+        return_norms: dict[str, RunningStats],
+        iteration: int = 0,
+        kappa: float = 100.0,
+    ) -> None:
+        self.config = config
+        self.obs_size = obs_size
+        self.models = models
+        self.optimizers = optimizers
+        self.obs_norms = obs_norms
+        self.return_norms = return_norms
+        self.iteration = iteration
+        self.kappa = kappa  # goal units -> payoff units (the qre objective learns on payoffs)
 
     @classmethod
     def create(cls, config: PPOConfig, obs_size: int, kappa: float = 100.0) -> Learner:
+        """A fresh learner for observations of *obs_size*, seeded by the config."""
+
         torch.manual_seed(config.seed)
         models = {i: ActorCritic(obs_size, config.hidden) for i in IDENTITIES}
         optimizers: dict[str, torch.optim.Optimizer] = {
@@ -619,11 +412,12 @@ class Learner:
         )
 
     def policy(self) -> LearnedPolicy:
+        """The current networks as a policy."""
+
         return LearnedPolicy(self.models, self.obs_norms)
 
     def weights(self) -> dict[str, dict[str, np.ndarray]]:
-        """Copies of the networks' parameters (a view would follow later updates: E52, the
-        league's snapshots were the live networks)."""
+        """Copy the network parameters so saved opponents stay fixed during later training."""
 
         return {
             i: {k: v.detach().cpu().numpy().copy() for k, v in m.state_dict().items()}
@@ -631,6 +425,8 @@ class Learner:
         }
 
     def step(self, episodes: Sequence[Episode]) -> dict[str, dict[str, float]]:
+        """One PPO update of every trainable identity on *episodes*."""
+
         generator = torch.Generator().manual_seed(self.config.seed * 1000 + self.iteration)
         stats: dict[str, dict[str, float]] = {}
         if self.config.lr_final is not None:
@@ -666,7 +462,7 @@ class Learner:
             stats[ident]["decisions"] = float(len(batch.action))
         for ident in IDENTITIES:  # normalizers move after the update (the batch used the old)
             if self.config.trainable and ident not in self.config.trainable:
-                continue  # a frozen identity keeps its preprocessing too (best responses, E52)
+                continue  # a frozen identity keeps its preprocessing too (best responses)
             raw = [o for e in episodes for o in e.steps.get(ident, {}).get("obs", [])]
             if raw:
                 self.obs_norms[ident].update(split(np.stack(raw))[0])
@@ -677,9 +473,11 @@ class Learner:
         return stats
 
     def save(self, path: Path) -> None:
+        """Save the learner (tensors and plain values only)."""
+
         torch.save(
             {
-                "config": asdict(self.config),
+                "config": self.config.to_dict(),
                 "obs_size": self.obs_size,
                 "iteration": self.iteration,
                 "kappa": self.kappa,
@@ -693,11 +491,13 @@ class Learner:
 
     @classmethod
     def load(cls, path: Path) -> Learner:
+        """A learner saved by :meth:`save`."""
+
         data = torch.load(path, weights_only=True)  # tensors and plain values only
         raw = dict(data["config"])
         raw["events"] = tuple(raw["events"])
         raw["agents"] = tuple(raw["agents"])
-        raw.setdefault("objective", "ppo")  # checkpoints from before E46 used plain PPO
+        raw.setdefault("objective", "ppo")  # older checkpoints without this field used PPO
         raw.setdefault("temperature_start", None)
         raw.setdefault("anneal", 0.5)
         raw.setdefault("lr_final", None)
@@ -718,6 +518,8 @@ class Learner:
 
 
 def summarize(episodes: Sequence[Episode]) -> dict[str, Any]:
+    """Each event's outcome shares and mean returns over *episodes*."""
+
     outcomes: dict[str, dict[str, float]] = defaultdict(dict)
     returns: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for e in episodes:
@@ -746,7 +548,13 @@ def train(
     progress: Callable[[str], None] = print,
     evaluate: Callable[[LearnedPolicy], dict[str, Any]] | None = None,
 ) -> Learner:
-    """Train for ``config.iterations`` iterations, logging to ``out/log.jsonl``."""
+    """Train the policies and write progress to ``out/log.jsonl``.
+
+    Each learning identity has one actor-critic shared across its event roles.
+    Identities learn together; computer-run roles retain reference strategies.
+    Episode seeds depend on the run seed and iteration, making episode
+    collection reproducible for a fixed worker count.
+    """
 
     out.mkdir(parents=True, exist_ok=True)
     catalog = load_catalog()
@@ -757,7 +565,7 @@ def train(
         else Learner.create(config, probe.observation_size, catalog.goals.kappa)
     )
     learner.config = config  # a resumed run may change what learns (best responses)
-    (out / "config.json").write_text(json.dumps(asdict(config), indent=1))
+    (out / "config.json").write_text(json.dumps(config.to_dict(), indent=1))
     log = (out / "log.jsonl").open("a", encoding="utf-8")
     workers = max(1, config.workers)
     league: list[Snapshot] = []  # past snapshots (league play); not saved in checkpoints
@@ -810,20 +618,38 @@ def train(
 
 
 def scenario_entries(config: PPOConfig) -> dict[str, list[Entry]]:
+    """The entries of the config's events."""
+
     entries = load_entries(Path(config.entries))
     return {e: entries[e] for e in config.events} if config.events else entries
 
 
 __all__ = [
+    "EMBED",
+    "HUBER_DELTA",
+    "IDENTITIES",
+    "OBJECTIVES",
+    "_WORKER",
     "ActorCritic",
+    "Batch",
+    "CampaignTrainingEnv",
     "Episode",
     "LearnedPolicy",
     "Learner",
+    "Norms",
     "PPOConfig",
     "RunningStats",
+    "Snapshot",
+    "Weights",
+    "_init_worker",
+    "_rollout",
+    "batch_for",
     "gae",
     "make_env",
     "play_episode",
     "scenario_entries",
+    "split",
+    "summarize",
     "train",
+    "update",
 ]

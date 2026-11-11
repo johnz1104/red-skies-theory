@@ -1,4 +1,4 @@
-"""Approximate best responses: exploitability for events without a tree (E49).
+"""Approximate best responses: exploitability for events without a tree.
 
 Wars, talks and the freestyle campaign have no game tree to compute exact best responses
 on (``evaluate`` covers instant tree events). Here one identity's best response is
@@ -15,7 +15,6 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -63,9 +62,12 @@ def best_response(
     seed: int = 0,
     progress: Callable[[str], None] = print,
 ) -> dict[str, Any]:
+    """Train *identity* alone against a frozen checkpoint and measure its gain: an
+    approximate exploitability, for events without a tree.
+    """
+
     base = Learner.load(checkpoint)
-    config = replace(
-        base.config,
+    config = base.config.replace(
         trainable=(identity,),
         objective="ppo",
         entropy=0.001,

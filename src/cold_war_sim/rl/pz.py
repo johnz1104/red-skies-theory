@@ -15,9 +15,9 @@ import numpy as np
 from gymnasium import spaces
 from pettingzoo import AECEnv
 
-from ..decisions import MAX_OPTIONS
-from ..env import ColdWarEnv
-from ..scenario import ScenarioEnv
+from ..campaign.decisions.requests import MAX_OPTIONS
+from ..campaign.environments.campaign import ColdWarEnv
+from ..campaign.environments.scenario import ScenarioEnv
 
 
 class CampaignAEC(AECEnv):
@@ -43,9 +43,13 @@ class CampaignAEC(AECEnv):
         self._sync()
 
     def observation_space(self, agent: str) -> spaces.Space[Any]:
+        """The observation space of *agent*."""
+
         return self.observation_spaces[agent]
 
     def action_space(self, agent: str) -> spaces.Space[Any]:
+        """The action space of *agent*: the option indices."""
+
         return self.action_spaces[agent]
 
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> None:
@@ -67,22 +71,32 @@ class CampaignAEC(AECEnv):
         self._sync()
 
     def observe(self, agent: str) -> dict[str, np.ndarray]:
+        """*agent*'s observation vector and action mask."""
+
         return {
             "observation": np.asarray(self.env.observe(agent), dtype=np.float32),
             "action_mask": np.asarray(self.env.action_mask(agent), dtype=np.int8),
         }
 
     def step(self, action: int | None) -> None:
+        """Step the wrapped environment and copy its tables."""
+
         self.env.step(None if action is None else int(action))
         self._sync()
 
     def render(self) -> None:
+        """Nothing to render."""
+
         return None
 
     def close(self) -> None:
+        """Nothing to close."""
+
         return None
 
     def _sync(self) -> None:
+        """Copy the wrapped environment's agents, rewards and flags."""
+
         env = self.env
         self.agents = list(env.agents)
         self.rewards = dict(env.rewards)
